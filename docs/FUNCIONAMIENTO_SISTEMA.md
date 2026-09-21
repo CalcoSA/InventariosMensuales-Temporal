@@ -160,20 +160,23 @@ sin el mismo mecanismo de exclusión. No se agregó coordinación distribuida.
 
 ## Administración e identidad
 
-IdentityService recibe un proveedor callable sin argumentos que devuelve el correo
-de una identidad previamente autenticada y verificada por el entorno corporativo.
-El proveedor se inyecta en create_app(identity_provider=...). No obtiene identidad
-de parámetros, Base64, encabezados de usuario ni de OAuth Google.
-En ausencia de identidad, el botón queda oculto y todas las operaciones
-administrativas responden 403.
+IdentityService conserva su proveedor callable. Con AUTH_ENABLED=true se conecta
+al email de la sesión validada por el SSO WordPress RS256; el canje crea una cookie
+HttpOnly con JWT interno HS256 independiente. No obtiene identidad de parámetros,
+Base64, encabezados de usuario ni OAuth Google. Sin sesión se responde 401; una
+sesión de usuario normal recibe 403 en operaciones administrativas.
+Con autenticación deshabilitada en desarrollo no se asume identidad ni administrador.
 
 La única dirección administrativa es info.costos@crepesywafflesantioquia.com.
 Se normaliza con strip y minúsculas. Los casos de autorización, suplantación,
 ausencia de identidad y error del frontend están probados. Contrato completo y
 responsabilidad del SSO en [AUTENTICACION_ADMIN.md](AUTENTICACION_ADMIN.md).
-El repositorio hermano se consultó como referencia; no se alteró ni se copió su
-autenticación específica de WordPress. Producción debe integrar y probar su
-proveedor verificado antes de habilitar acceso. Esa integración no está desplegada.
+Se reutilizó el patrón de sesión de Uno a Uno, sin modificar ese repositorio.
+SESSION_IDLE_TIMEOUT_SECONDS=1200 conserva su política exacta: actividad real,
+heartbeat limitado a 45 segundos, comprobación cada 5 segundos, expiración
+deslizante y coordinación entre pestañas. Lecturas y status no renuevan.
+La autenticación no llama a Google ni altera caché, batching, locks o conteos.
+Dominio, claves y publicación del snippet siguen a cargo del operador; no hay despliegue.
 
 ## Consolidado, CSV y Siesa
 

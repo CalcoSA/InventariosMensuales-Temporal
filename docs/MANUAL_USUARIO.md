@@ -3,16 +3,29 @@
 Este manual explica el comportamiento de la aplicación migrada. La conexión Google
 de este equipo ya fue verificada en solo lectura. Guardar y recuperar borradores
 también fueron validados manualmente. Las escrituras reales siguen deshabilitadas.
-La administración requiere que soporte conecte la identificación corporativa.
+El acceso corporativo por intranet ya está preparado y requiere que soporte
+complete su configuración. La administración utiliza el correo de esa sesión.
 
 ## 1. Ingresar a la aplicación
 
 Abra la dirección que le entregue soporte. Verá CREPES & WAFFLES, Inventarios PDV,
 Inventario Mensual y el panel Datos del inventario.
 Espere a que aparezca la lista de puntos de venta.
+Cuando el acceso corporativo esté habilitado, ingrese desde el botón
+INVENTARIOS MENSUALES de la intranet. Si accede directamente sin sesión, se le
+pedirá volver a la intranet.
 En este equipo la aplicación no arranca sola: el usuario debe ejecutar manualmente
 `.\.venv\Scripts\python.exe run.py` y abrir `http://127.0.0.1:5000`.
 Al terminar, Ctrl+C detiene el servidor; cerrar VS Code no sustituye ese paso.
+
+### Sesión y borrador
+
+La sesión vence tras **20 minutos sin actividad**, igual que Inventarios Uno a Uno.
+Escribir, pulsar botones, desplazarse o mover el ratón dentro de la aplicación
+mantiene la sesión; dejar la pestaña abierta sin usarla no lo hace.
+Si vence, aparecerá una pantalla para ingresar nuevamente desde la intranet.
+Su borrador permanece en ese navegador: vuelva a seleccionar el mismo PDV,
+fecha y categoría para continuar.
 
 ## 2. Seleccionar Punto de Venta
 

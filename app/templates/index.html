@@ -386,6 +386,12 @@
     </section>
   </main>
 
+  {% if config.AUTH_ENABLED %}
+  <script src="/static/js/auth.js"
+          data-idle-seconds="{{ config.SESSION_IDLE_TIMEOUT_SECONDS }}"
+          data-session-context="{{ auth_session_context }}"
+          data-remaining-seconds="{{ auth_remaining_seconds }}"></script>
+  {% endif %}
   <script src="/static/js/api.js"></script>
   <script src="/static/js/monthly.js"></script>
   <script src="/static/js/events.js"></script>

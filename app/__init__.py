@@ -3,6 +3,7 @@ from werkzeug.exceptions import HTTPException
 from .config import settings
 from .container import Container
 from .controllers.web import web
+from .controllers.auth import register_auth
 from .models.errors import DomainError
 
 
@@ -33,8 +34,9 @@ def create_app(config=None, *, container=None, identity_provider=None):
             "connect-src 'self'; img-src 'self' data:; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Cache-Control"] = "no-store"
         return response
+    register_auth(app)
     return app

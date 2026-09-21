@@ -6,8 +6,9 @@ Sheets como fuente de verdad.
 
 **Estado actual: migración implementada, con pruebas diferenciales, fakes y Chromium.
 Los tres originales permanecen intactos en legacy. OAuth propio y lectura real
-verificados: 35 PDV y 566 productos de BC01 en 6 llamadas. La identidad corporativa
-debe conectarse antes de habilitar administración en producción.**
+verificados: 35 PDV y 566 productos de BC01 en 6 llamadas. SSO WordPress RS256 y
+sesión interna implementados con la misma inactividad de Uno a Uno: 1200 segundos.
+Falta configurar claves/dominio y publicar manualmente el snippet en producción.**
 
 ## Instalación y ejecución local
 
@@ -108,11 +109,29 @@ docs/                  requisitos, manuales y resultados
 credentials/           cliente y token OAuth excluidos de Git
 ```
 
-La administración deniega por defecto. Producción debe inyectar un proveedor de
-identidad verificada en create_app(identity_provider=...), cuyo correo autenticado
-sea info.costos@crepesywafflesantioquia.com. No se aceptan correos por querystring,
-encabezados arbitrarios ni el correo de la cuenta OAuth como identidad del usuario.
+La administración deniega por defecto. Con AUTH_ENABLED=true, POST /auth/sso
+valida JWT RS256 del emisor calco-intranet para inventarios-mensuales y conecta
+IdentityService al email firmado de la sesión interna. Solo
+info.costos@crepesywafflesantioquia.com tiene permisos administrativos.
+No se aceptan correos por querystring, encabezados arbitrarios ni OAuth técnico.
 El contrato está en [Autenticación administrativa](docs/AUTENTICACION_ADMIN.md).
+
+## SSO y sesión
+
+La configuración local mantiene AUTH_ENABLED=false y GOOGLE_WRITES_ENABLED=false.
+La preparación SSO está en .env.example: clave pública RSA y secreto interno propio
+pendientes de suministrar por el operador. Producción exige autenticación y cookie
+Secure. No se generaron claves reales ni se modificó WordPress.
+
+SESSION_IDLE_TIMEOUT_SECONDS=1200 mide inactividad real. Escribir, hacer clic,
+desplazarse o mover el ratón mantiene la sesión mediante actividad limitada a un
+envío cada 45 segundos. Los sondeos, las consultas API y una pestaña abierta sin
+actividad no renuevan por sí solos. El borrador se conserva al expirar.
+
+[Snippet Woody unificado de referencia](docs/WOODY_INVENTARIOS_UNIFICADO.php):
+conserva Uno a Uno y añade Mensuales. Sustituir __INVENTARIOS_MENSUALES_URL__ por
+la URL HTTPS base real, sin barra final ni /auth/sso. No hay dominio mensual asumido.
+No ejecutar ese archivo localmente; el usuario lo copiará al mismo snippet Woody.
 
 ## Documentación de la implementación
 

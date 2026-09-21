@@ -16,6 +16,13 @@ def render():
     html = re.sub(r"<script>[\s\S]*?</script>",
                   '<script src="/static/js/api.js"></script>\n  <script src="/static/js/monthly.js"></script>\n  <script src="/static/js/events.js"></script>', html)
     html = html.replace("<head>", "<head>\n  <title>Inventarios Mensuales PDV</title>")
+    auth_script = ('{% if config.AUTH_ENABLED %}\n'
+                   '  <script src="/static/js/auth.js"\n'
+                   '          data-idle-seconds="{{ config.SESSION_IDLE_TIMEOUT_SECONDS }}"\n'
+                   '          data-session-context="{{ auth_session_context }}"\n'
+                   '          data-remaining-seconds="{{ auth_remaining_seconds }}"></script>\n'
+                   '  {% endif %}\n  ')
+    html = html.replace('<script src="/static/js/api.js">', auth_script + '<script src="/static/js/api.js">')
     js = events(js.replace("google.script.run", "monthlyApi"))
     # Ignore stale category responses after the user changes PDV/date quickly.
     js = js.replace("estadosCategorias = estados || [];",

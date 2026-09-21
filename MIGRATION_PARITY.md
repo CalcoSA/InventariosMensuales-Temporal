@@ -72,7 +72,7 @@ una prueba diferencial. Las escrituras reales siguen deshabilitadas.
 | `normalizar_` | models.text.normalize | tests/test_differential.py | D |
 | `doGet` | controllers.web.index | tests/test_frontend.py::test_original_visual_parity | F: comparación visual escritorio/móvil |
 | `obtenerEstadoAdministrador` | RPC + IdentityService.is_admin | tests/test_identity.py; tests/test_frontend.py | F |
-| `obtenerCorreoUsuario_` | IdentityService.email | tests/test_identity.py; tests/test_frontend.py | R: proveedor corporativo pendiente |
+| `obtenerCorreoUsuario_` | IdentityService.email + sesión SSO verificada | tests/test_identity.py; tests/test_sso.py | F/R: email firmado; configuración productiva pendiente |
 | `esCorreoAdministrador_` | IdentityService.is_admin | tests/test_identity.py; tests/test_frontend.py | F |
 | `validarAccesoAdministrador_` | IdentityService.require_admin | tests/test_identity.py; tests/test_frontend.py | F |
 | `obtenerCarpetaBasesMensuales_` | MonthlyBasesRepository.folder | tests/test_inventory.py; tests/test_concurrency.py | F/R |
@@ -178,7 +178,9 @@ a cobertura de flujos en Chromium; no se afirma una prueba aislada por cada help
 - Bloqueo en un host, no transacción distribuida con el Apps Script original.
 - Identidad corporativa desacoplada y denegación administrativa sin proveedor verificado.
 - OAuth propio y lectura real verificados: 35 PDV, Mensual BC01, 566 productos, 6 llamadas.
-- Conversiones/escrituras reales, SSO y datasets completos de producción no validados.
+- SSO WordPress/JWT implementado y probado con RSA efímera, sesión de 1200 segundos
+  de inactividad y borrador conservado. Contrato en docs/AUTENTICACION_ADMIN.md.
+- Conversiones/escrituras reales, SSO productivo y datasets completos de producción no validados.
 
 
 ## Registro histórico de preparación, ya superado

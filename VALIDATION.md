@@ -1,6 +1,78 @@
 # Estado de validación
 
-## Estado actual — cierre de la implementación
+## Estado actual — cierre SSO/JWT del 21 de septiembre de 2026
+
+Se retomó el repositorio limpio en e566ab0. La migración tenía 168 pruebas aprobadas
+y autorización administrativa mediante IdentityService, pero ningún login JWT,
+endpoint de sesión, cookie o timeout. Se revisaron el servicio, controlador,
+frontend, configuración y pruebas reales del repositorio local de Uno a Uno.
+
+Implementado exclusivamente lo pendiente de autenticación: POST /auth/sso,
+POST /auth/activity, GET/POST /auth/status, POST /auth/logout, GET /auth/expired
+y GET /healthz. SSO RS256 con issuer calco-intranet y audience nuevo
+inventarios-mensuales; email obligatorio firmado y sesión interna HS256 independiente.
+Se conserva IdentityService y la única dirección administrativa del legacy.
+Se reutiliza la política de inactividad de Uno a Uno: 1200 segundos, actividad real,
+heartbeat de 45 segundos, comprobación de 5 segundos y coordinación entre pestañas.
+
+**Suite completa: 287 aprobadas, 0 fallidas y 0 omitidas, en 35,33 segundos.**
+Se conservan las 168 pruebas anteriores y se agregan 119:
+
+| Grupo nuevo | Pruebas | Evidencia |
+|---|---:|---|
+| SSO, sesión, configuración y frontend de actividad | 117 | tests/test_sso.py y tests/auth_frontend.cjs |
+| Expiración y recuperación de borrador en Chromium | 2 | tests/test_sso_browser.py |
+
+La nueva cobertura incluye JWT válido, firma ajena, none/HS256 rechazados para SSO,
+issuer/audience incorrectos (incluido Uno a Uno), expiración, nbf futuro, claims
+faltantes o inválidos, replay atómico/TTL, email firmado, admin/usuario normal,
+normalización, OAuth independiente, cookie HttpOnly/Secure, logout, actividad
+deslizante, polling sin renovación, pestañas compartidas y conservación del borrador.
+También verifica que una sesión expirada no se renueve ni borre una cookie más nueva.
+
+Las pruebas usan claves RSA efímeras en RAM y servicios Google fake. Se ejecutaron
+primero 130 pruebas dirigidas; después pasaron las dos de Chromium y la suite global.
+El adaptador del navegador transporta la cookie emitida por el endpoint de prueba;
+el 303 SSO se comprueba por separado en Flask test client. No se inició un servidor.
+
+Comando global:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m pytest -q --junitxml .runtime/sso-validation.xml
+```
+
+Dependencias: PyJWT 2.14.0 con cryptography 50.0.1; pip check sin incompatibilidades.
+El XML es temporal y sus resultados se conservan aquí. Las mediciones de carga del
+18 de septiembre permanecen intactas; los 24 escenarios de concurrencia volvieron
+a pasar dentro de la regresión.
+
+La propuesta docs/WOODY_INVENTARIOS_UNIFICADO.php conserva issuer/audience/URL
+de Uno a Uno y añade Mensuales mediante whitelist fija. Su compatibilidad se revisó
+en el código del validador de Uno a Uno, que admite claims adicionales como email.
+El PHP de referencia no se ejecutó localmente ni se publicó en WordPress.
+Reemplazo pendiente: __INVENTARIOS_MENSUALES_URL__ por la URL HTTPS base real.
+No se generaron claves de producción ni se modificaron paths reales.
+
+Configuración efectiva local comprobada: AUTH_ENABLED=false,
+SESSION_IDLE_TIMEOUT_SECONDS=1200 y GOOGLE_WRITES_ENABLED=false.
+Pendientes externos: dominio/hosts permitidos, clave pública y secreto de sesión,
+configuración autenticada y publicación manual del snippet. ReplayCache conserva
+el alcance de un proceso como Uno a Uno; no se afirma protección entre réplicas.
+Detalle y contrato en [docs/AUTENTICACION_ADMIN.md](docs/AUTENTICACION_ADMIN.md).
+
+No se cambió lógica de inventario, caché, single-flight, batching, concurrencia,
+Guardar, Finalizar, duplicados, total, generador, preparación, CSV, Siesa ni limpieza.
+No se consultó ni escribió Google real durante esta tarea. No hubo modificaciones
+de WordPress real, deployment, Docker, CI/CD, infraestructura, commit ni push.
+run.py no se ejecutó; el inicio continúa siendo exclusivamente manual.
+Comprobación final: 0 procesos de aplicación y 0 listeners del proyecto, incluidos
+los puertos 5000 y 8000. Se retiró el XML temporal; no quedó ningún servidor iniciado.
+
+## Registro del cierre de migración — 18 de septiembre de 2026
+
+El bloque siguiente conserva la evidencia del cierre anterior. Su pendiente de
+implementar identidad corporativa fue atendido por el cierre SSO/JWT documentado arriba;
+la configuración y comprobación contra WordPress productivo siguen pendientes.
 
 Revisión del 18 de septiembre de 2026. Se retomó el repositorio existente sin
 revertir cambios ni volver a implementar funciones ya probadas.
