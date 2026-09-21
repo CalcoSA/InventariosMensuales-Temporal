@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import jwt
 import pytest
+from flask import request
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 
@@ -446,3 +447,96 @@ def test_malformed_activity_does_not_renew(client,token,body):
     response=client.post("/auth/activity",data=body,content_type="application/json",headers=HEADERS)
     assert response.status_code==400 and "Set-Cookie" not in response.headers
 
+
+APACHE_HOST = 'inventarios-mensuales.calcoweb.net'
+APACHE_INTERNAL_URL = 'http://' + APACHE_HOST
+APACHE_EXTERNAL_URL = 'https://' + APACHE_HOST
+APACHE_HEADERS = {
+    'X-Forwarded-Proto': 'https', 'X-Forwarded-Port': '443',
+    'Origin': APACHE_EXTERNAL_URL, 'X-Monthly-Request': '1',
+    'Sec-Fetch-Site': 'same-origin',
+}
+
+
+@pytest.fixture
+def apache_app(auth_config, clock, tmp_path):
+    return create_app({**auth_config, 'APP_ENV': 'production', 'SESSION_COOKIE_SECURE': True,
+                       'TRUSTED_HOSTS': ['localhost', '127.0.0.1', APACHE_HOST]},
+                      container=make_container(tmp_path))
+
+
+@pytest.fixture
+def apache_client(apache_app, token):
+    client = apache_app.test_client()
+    response = client.post('/auth/sso', base_url=APACHE_INTERNAL_URL,
+                           headers=APACHE_HEADERS, data={'token': token()})
+    assert response.status_code == 303 and 'Secure' in response.headers['Set-Cookie']
+    return client
+
+
+def test_apache_https_activity_and_external_host_url(apache_client):
+    with apache_client:
+        response = apache_client.post('/auth/activity', base_url=APACHE_INTERNAL_URL,
+                                      headers=APACHE_HEADERS, json={})
+        assert response.status_code == 204
+        assert request.environ['werkzeug.proxy_fix.orig']['wsgi.url_scheme'] == 'http'
+        assert request.host_url == APACHE_EXTERNAL_URL + '/'
+        assert request.is_secure
+        assert request.environ['SERVER_PORT'] == '443'
+
+
+def test_apache_matching_origin_allows_api(apache_client):
+    response = apache_client.post('/api/obtenerPuntosVenta', base_url=APACHE_INTERNAL_URL,
+                                  headers=APACHE_HEADERS, json={'args': []})
+    assert response.status_code == 200
+    assert response.json['result'] == ['BR00 - PDV 0']
+
+
+@pytest.mark.parametrize('path', ['/auth/activity', '/api/guardarInventario'])
+@pytest.mark.parametrize('changes', [
+    {'Origin': 'https://evil.test'},
+    {'Origin': APACHE_INTERNAL_URL},
+    {'Origin': APACHE_EXTERNAL_URL + ':8443'},
+    {'Sec-Fetch-Site': 'cross-site'},
+    {'X-Monthly-Request': None},
+])
+def test_apache_keeps_origin_and_mutation_protection(apache_client, path, changes):
+    headers = {key: value for key, value in {**APACHE_HEADERS, **changes}.items() if value is not None}
+    response = apache_client.post(path, base_url=APACHE_INTERNAL_URL, headers=headers, json={})
+    assert response.status_code == 403
+    assert response.json == {'error': 'Origen de solicitud no permitido.'}
+    container = apache_client.application.extensions['monthly']
+    assert container.drive.calls == container.sheets.reads == container.sheets.writes == 0
+
+
+def test_apache_untrusted_host_cannot_be_replaced_by_forwarded_host(apache_client):
+    cookie_name = apache_client.application.config['SESSION_JWT_COOKIE_NAME']
+    cookie = apache_client.get_cookie(cookie_name, domain=APACHE_HOST)
+    # Supply a valid session even for the hostile Host so rejection tests the host check.
+    apache_client.set_cookie(cookie_name, cookie.value, domain='evil.test')
+    response = apache_client.post('/auth/activity', base_url='http://evil.test', json={},
+                                  headers={**APACHE_HEADERS, 'X-Forwarded-Host': APACHE_HOST})
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize('path', ['/auth/activity', '/api/guardarInventario'])
+def test_apache_missing_session_precedes_origin_check(apache_app, path):
+    headers = {**APACHE_HEADERS, 'Origin': 'https://evil.test', 'Sec-Fetch-Site': 'cross-site'}
+    del headers['X-Monthly-Request']
+    response = apache_app.test_client().post(path, base_url=APACHE_INTERNAL_URL,
+                                             headers=headers, json={})
+    assert response.status_code == 401
+    assert response.json == {'error': 'Sesión expirada. Ingrese nuevamente desde la intranet.'}
+
+
+def test_apache_trusts_only_last_proto_port_and_ignores_other_forwarded_headers(apache_client):
+    headers = {**APACHE_HEADERS, 'X-Forwarded-Proto': 'http, https',
+               'X-Forwarded-Port': '8089, 443', 'X-Forwarded-Host': 'evil.test',
+               'X-Forwarded-For': '203.0.113.10', 'X-Forwarded-Prefix': '/forged'}
+    with apache_client:
+        response = apache_client.post('/auth/activity', base_url=APACHE_INTERNAL_URL,
+                                      headers=headers, json={})
+        assert response.status_code == 204
+        assert request.host_url == APACHE_EXTERNAL_URL + '/'
+        assert request.remote_addr == '127.0.0.1'
+        assert request.script_root == ''

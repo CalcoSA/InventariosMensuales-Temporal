@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 from .config import settings
 from .container import Container
 from .controllers.web import web
@@ -9,6 +10,9 @@ from .models.errors import DomainError
 
 def create_app(config=None, *, container=None, identity_provider=None):
     app = Flask(__name__)
+    # One Apache proxy sets proto/port; ProxyPreserveHost supplies the real Host.
+    # The backend must remain reachable only through that trusted proxy.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=0, x_proto=1, x_host=0, x_port=1, x_prefix=0)
     app.config.update(settings())
     if config:
         app.config.update(config)
