@@ -1,0 +1,5 @@
+# Preserve supplied references byte-for-byte even with core.autocrlf enabled.
+legacy/*.gs -text
+legacy/index_original.html -text
+docs/REQUISITOS_MIGRACION.md -text
+docs/CONTEXTO_CUENTA_GOOGLE.md -text

@@ -1,0 +1,226 @@
+"""Real Chromium DOM tests. All HTTP is intercepted into Flask's test client.
+No listening server and no Google connection are created.
+"""
+from pathlib import Path
+import base64
+import re
+import pytest
+from playwright.sync_api import sync_playwright, expect
+from app import create_app
+from app.models.errors import GoogleUnavailable, WriteUncertain
+from app.services.retry import GoogleExecutor
+from tests.test_cache_retry import HttpFailure
+from tests.conftest import make_container
+from tests.fakes import payload
+
+ROOT=Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture(scope="module")
+def browser():
+    with sync_playwright() as p:
+        executable=Path("C:/Program Files/Google/Chrome/Application/chrome.exe")
+        browser=p.chromium.launch(executable_path=str(executable) if executable.exists() else None,headless=True)
+        yield browser
+        browser.close()
+
+
+@pytest.fixture
+def ui(browser,tmp_path):
+    c=make_container(tmp_path)
+    app=create_app({"TESTING":True},container=c)
+    client=app.test_client()
+    context=browser.new_context(viewport={"width":1280,"height":1000},locale="es-CO",timezone_id="America/Bogota")
+    calls=[]
+    def route_handler(route):
+        request=route.request
+        from urllib.parse import urlsplit
+        parsed=urlsplit(request.url)
+        if parsed.hostname!="localhost":
+            route.abort();return
+        calls.append(parsed.path)
+        if parsed.path=="/original":
+            html=(ROOT/"legacy/index_original.html").read_text(encoding="utf-8")
+            shim='<script src="/static/js/api.js"></script><script>window.google={script:{run:monthlyApi}};</script>'
+            route.fulfill(status=200,content_type="text/html",body=html.replace("<script>",shim+"<script>",1));return
+        response=client.open(parsed.path,method=request.method,data=request.post_data,headers=dict(request.headers))
+        route.fulfill(status=response.status_code,headers=dict(response.headers),body=response.data)
+    context.route("**/*",route_handler)
+    page=context.new_page()
+    page.on("dialog",lambda dialog:dialog.accept())
+    page.goto("http://localhost/")
+    expect(page.locator("#puntoVenta option")).to_have_count(2)
+    yield page,c,context,calls
+    context.close()
+
+
+def select_category(page):
+    page.select_option("#puntoVenta","BR00 - PDV 0")
+    page.fill("#fechaInventario","2026-09-18")
+    expect(page.locator("#categoriaInventario option")).to_have_count(3)
+    page.select_option("#categoriaInventario","Bebidas")
+    page.click("#botonComenzar")
+    expect(page.locator(".producto")).to_have_count(2)
+
+
+def test_inventory_draft_progress_search_restore_and_finalize(ui):
+    page,c,context,calls=ui
+    assert page.input_value("#fechaInventario")==page.evaluate("new Date().toLocaleDateString('en-CA')")
+    select_category(page)
+    page.click("#botonFinalizar")
+    expect(page.locator("#mensajeInventario")).to_contain_text("Faltan 2 productos")
+    page.fill("#cerrado-0","4")
+    page.fill("#abierto-0","2.5")
+    expect(page.locator("#textoProgreso")).to_have_text("1 de 2 (50%)")
+    page.fill("#buscador","Café")
+    expect(page.locator(".producto")).to_have_count(1)
+    page.fill("#buscador","")
+    expect(page.locator(".producto")).to_have_count(2)
+    writes=c.sheets.writes
+    page.click("#botonGuardarProceso")
+    expect(page.locator("#mensajeInicio")).to_contain_text('quedó guardado')
+    expect(page.locator("#listaEstadosCategorias")).to_contain_text("En proceso")
+    assert c.sheets.writes==writes==0
+    assert "/api/guardarInventario" not in calls
+    stored=page.evaluate("JSON.parse(localStorage.getItem('inventario-mensual-v1-BR00 - PDV 0-2026-09-18-Bebidas'))")
+    assert list(stored[0])==["item","cerrado","abierto"]
+    page.reload()
+    select_category(page)
+    assert page.input_value("#cerrado-0")=="4"
+    page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
+    expect(page.locator("#textoProgreso")).to_have_text("2 de 2 (100%)")
+    page.click("#botonGuardarProceso")
+    expect(page.locator("#listaEstadosCategorias")).to_contain_text("Completada")
+    page.select_option("#categoriaInventario","Bebidas");page.click("#botonComenzar")
+    expect(page.locator(".producto")).to_have_count(2)
+    page.click("#botonFinalizar")
+    expect(page.locator("#pantallaExito")).to_be_visible()
+    assert c.sheets.writes==1
+    assert page.evaluate("localStorage.getItem('inventario-mensual-v1-BR00 - PDV 0-2026-09-18-Bebidas')") is None
+    page.click("#botonVolverCategorias")
+    expect(page.locator("#categoriaInventario option[value='Bebidas']")).to_be_disabled()
+    expect(page.locator("#listaEstadosCategorias")).to_contain_text("Ya guardada")
+    # Original success screen owns the change-PDV action.
+    page.evaluate("nuevoInventario()")
+    assert page.input_value("#puntoVenta")==""
+
+
+@pytest.mark.parametrize("statuses",[[429,200],[429,429,200],[429,429,429,429]])
+def test_finalizar_read_retries_and_draft_confirmation(ui,monkeypatch,statuses):
+    page,c,context,calls=ui
+    select_category(page)
+    page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
+    responses=iter(statuses)
+    sleeps=[]
+    executor=GoogleExecutor(sleep=sleeps.append,jitter=lambda:0)
+    snapshot=c.inventory_repository.snapshot
+    def attempt(file_id):
+        status=next(responses)
+        if status!=200:raise HttpFailure(status)
+        return snapshot(file_id)
+    monkeypatch.setattr(c.inventory_repository,"snapshot",lambda file_id:executor.execute(lambda:attempt(file_id)))
+    page.click("#botonFinalizar")
+    if statuses[-1]==200:
+        expect(page.locator("#pantallaExito")).to_be_visible()
+        assert page.evaluate("localStorage.length")==0
+        assert c.sheets.writes==1
+    else:
+        expect(page.locator("#mensajeInventario")).to_contain_text("demasiadas solicitudes")
+        expect(page.locator("#botonFinalizar")).to_be_enabled()
+        expect(page.locator("#pantallaInventario")).to_be_visible()
+        expect(page.locator("#pantallaExito")).to_be_hidden()
+        assert page.evaluate("localStorage.length")==1
+        assert c.sheets.writes==0
+    assert executor.calls==len(statuses)
+    assert sleeps==[2**i for i in range(len(statuses)-1)]
+
+
+def test_visibility_and_beforeunload_flush(ui):
+    page,*_=ui
+    select_category(page)
+    page.fill("#cerrado-0","12")
+    page.evaluate("window.dispatchEvent(new Event('beforeunload'))")
+    assert page.evaluate("JSON.parse(localStorage.getItem(obtenerClaveBorrador()))[0].cerrado")=="12"
+    page.fill("#abierto-0","3")
+    page.evaluate("Object.defineProperty(document,'hidden',{get:()=>true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));")
+    assert page.evaluate("JSON.parse(localStorage.getItem(obtenerClaveBorrador()))[0].abierto")=="3"
+
+
+def test_unconfirmed_write_preserves_draft_and_never_shows_success(ui):
+    page,c,context,calls=ui
+    select_category(page)
+    page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
+    c.sheets.fail_write=WriteUncertain("Google no confirmó el guardado. Su borrador se conserva.")
+    page.click("#botonFinalizar")
+    expect(page.locator("#mensajeInventario")).to_contain_text("no confirmó")
+    expect(page.locator("#botonFinalizar")).to_be_enabled()
+    expect(page.locator("#pantallaExito")).to_be_hidden()
+    assert page.evaluate("localStorage.length")==1
+    assert c.sheets.writes==1
+
+
+def test_admin_consolidated_filters_and_downloads(ui):
+    page,c,context,calls=ui
+    c.inventory.finalize(payload())
+    expect(page.locator("#botonAdministracion")).to_be_visible()
+    page.click("#botonAdministracion")
+    page.fill("#adminFecha","2026-09-18")
+    page.select_option("#adminPuntoVenta","BR00 - PDV 0")
+    page.fill("#adminBodega","BR03")
+    page.fill("#adminConsecutivo","897")
+    with page.expect_download() as download:
+        page.click("#botonDescargarPlano")
+    assert download.value.suggested_filename=="PDV_0-Mensual-00000897-PlanosPDV.txt"
+    page.click("#botonVerConteo")
+    expect(page.locator("#pantallaConsolidado")).to_be_visible()
+    expect(page.locator("#resumenProductos")).to_have_text("2")
+    page.fill("#buscadorConteo","cafe")
+    expect(page.locator("#cuerpoConteoConsolidado tr")).to_have_count(1)
+    with page.expect_download() as download:
+        page.click("#botonDescargarConteos")
+    assert download.value.suggested_filename.endswith(".csv")
+    page.get_by_role("button",name="Volver",exact=True).click()
+    page.get_by_role("button",name="Volver al inventario",exact=True).click()
+    expect(page.locator("#pantallaInicio")).to_be_visible()
+
+
+@pytest.mark.parametrize("width,height",[(1280,1000),(390,844)])
+def test_original_visual_parity(ui,width,height):
+    page,c,context,calls=ui
+    page.set_viewport_size({"width":width,"height":height})
+    select_category(page)
+    page.locator("#buscador").blur()
+    migrated=page.screenshot(full_page=True,animations="disabled")
+    original=context.new_page()
+    original.set_viewport_size({"width":width,"height":height})
+    original.goto("http://localhost/original")
+    expect(original.locator("#puntoVenta option")).to_have_count(2)
+    select_category(original)
+    original.locator("#buscador").blur()
+    baseline=original.screenshot(full_page=True,animations="disabled")
+    # Exact rendered-pixel comparison; PNG byte identity in the same browser engine.
+    assert migrated==baseline
+    original.close()
+
+
+@pytest.mark.parametrize("email",[None,"empleado@crepesywafflesantioquia.com"])
+def test_non_admin_and_no_browser_console_errors(ui,email):
+    page,c,context,calls=ui
+    c.identity.provider=lambda:email
+    errors=[]
+    page.on("pageerror",lambda error:errors.append(str(error)))
+    page.reload()
+    expect(page.locator("#botonAdministracion")).to_be_hidden()
+    select_category(page)
+    page.fill("#cerrado-0","1")
+    assert not errors
+
+
+def test_admin_status_error_keeps_button_hidden(ui):
+    page,c,context,calls=ui
+    def unavailable():raise GoogleUnavailable("Identidad no disponible.")
+    c.identity.provider=unavailable
+    with page.expect_response("**/api/obtenerEstadoAdministrador") as response:
+        page.reload()
+    assert response.value.status==503
+    expect(page.locator("#botonAdministracion")).to_be_hidden()
