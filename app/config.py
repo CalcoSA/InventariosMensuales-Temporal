@@ -9,6 +9,14 @@ ROOT = Path(__file__).resolve().parent.parent
 def settings():
     load_dotenv(ROOT / ".env")
     app_env = os.getenv("APP_ENV", "development")
+    trusted_hosts = ["127.0.0.1", "localhost"]
+    for value in os.getenv("TRUSTED_HOSTS", "").split(","):
+        host = value.strip()
+        # A leading dot also matches every subdomain in Werkzeug.
+        if "*" in host or host.startswith("."):
+            raise ValueError("TRUSTED_HOSTS solo admite hosts exactos, sin comodines.")
+        if host and host not in trusted_hosts:
+            trusted_hosts.append(host)
     return {
         "APP_ENV": app_env,
         # Validated strictly by session_auth_service, including production guards.
@@ -34,5 +42,5 @@ def settings():
         # Deliberate local-development guard. Enabling is an operator action.
         "GOOGLE_WRITES_ENABLED": os.getenv("GOOGLE_WRITES_ENABLED", "false").lower() == "true",
         "MAX_CONTENT_LENGTH": 4 * 1024 * 1024,
-        "TRUSTED_HOSTS": ["127.0.0.1", "localhost"],
+        "TRUSTED_HOSTS": trusted_hosts,
     }
