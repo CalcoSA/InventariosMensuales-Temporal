@@ -186,8 +186,8 @@ durante la migración. El catálogo y las bases no se eliminan.
 
 ## Administración
 
-Solo la identidad corporativa autenticada de
-info.costos@crepesywafflesantioquia.com tiene autorización administrativa.
+Tienen autorización administrativa las identidades corporativas autenticadas de
+info.costos@crepesywafflesantioquia.com y, temporalmente, juan.zapata@crepesywaffles.com.
 Si soporte aún no conectó la identidad, el botón no aparecerá.
 Usar la cuenta técnica Google no concede por sí solo esta autorización.
 

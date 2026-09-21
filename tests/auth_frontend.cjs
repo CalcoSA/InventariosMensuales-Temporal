@@ -11,6 +11,8 @@ function world(storageAvailable = true) {
   let now = 1800000000000, last = now, expiry = now + 1200000;
   const entries = new Map([[draftKey, draft]]), tabs = [], calls = [];
   async function request(url, options = {}) {
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(new Headers(options.headers).get('X-Monthly-Request'), '1');
     calls.push({url: String(url), options, at: now});
     let status = now < expiry ? 204 : 401;
     if (status === 204 && url === '/auth/activity') {

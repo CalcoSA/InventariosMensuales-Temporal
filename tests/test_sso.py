@@ -481,6 +481,8 @@ def test_apache_https_activity_and_external_host_url(apache_client):
         assert response.status_code == 204
         assert request.environ['werkzeug.proxy_fix.orig']['wsgi.url_scheme'] == 'http'
         assert request.host_url == APACHE_EXTERNAL_URL + '/'
+        assert request.scheme == 'https'
+        assert request.host == APACHE_HOST
         assert request.is_secure
         assert request.environ['SERVER_PORT'] == '443'
 
@@ -492,7 +494,8 @@ def test_apache_matching_origin_allows_api(apache_client):
     assert response.json['result'] == ['BR00 - PDV 0']
 
 
-@pytest.mark.parametrize('path', ['/auth/activity', '/api/guardarInventario'])
+@pytest.mark.parametrize('path', ['/auth/activity', '/api/guardarInventario',
+                                 '/api/obtenerPuntosVenta', '/api/obtenerEstadoAdministrador'])
 @pytest.mark.parametrize('changes', [
     {'Origin': 'https://evil.test'},
     {'Origin': APACHE_INTERNAL_URL},
@@ -540,3 +543,75 @@ def test_apache_trusts_only_last_proto_port_and_ignores_other_forwarded_headers(
         assert request.host_url == APACHE_EXTERNAL_URL + '/'
         assert request.remote_addr == '127.0.0.1'
         assert request.script_root == ''
+
+
+@pytest.mark.parametrize('email,admin', [
+    ('empleado@crepesywaffles.com', False),
+    ('juan.zapata@crepesywaffles.com', True),
+    (' JUAN.ZAPATA@CREPESYWAFFLES.COM ', True),
+    (ADMIN_EMAIL, True),
+    (' INFO.COSTOS@CREPESYWAFFLESANTIOQUIA.COM ', True),
+])
+def test_apache_signed_identity_inventory_and_admin_permissions(apache_app, token, monkeypatch, email, admin):
+    c = apache_app.extensions['monthly']
+    monkeypatch.setattr(c.auth, 'credentials', lambda: pytest.fail('OAuth is not user identity'))
+    client = apache_app.test_client()
+    assert client.post('/auth/sso', base_url=APACHE_INTERNAL_URL, headers=APACHE_HEADERS,
+                       data={'token': token({'email': email})}).status_code == 303
+    assert client.get('/', base_url=APACHE_INTERNAL_URL, headers=APACHE_HEADERS).status_code == 200
+
+    def call(method, *args):
+        return client.post('/api/' + method, base_url=APACHE_INTERNAL_URL,
+                           headers=APACHE_HEADERS, json={'args': list(args)})
+
+    state = call('obtenerEstadoAdministrador')
+    assert state.status_code == 200 and state.json['result'] == {'esAdministrador': admin}
+    assert call('obtenerPuntosVenta').json['result'] == ['BR00 - PDV 0']
+    assert call('obtenerCategorias', 'BR00 - PDV 0').json['result'] == ['Bebidas', 'Cocina']
+    products = call('obtenerProductos', 'BR00 - PDV 0', 'Bebidas')
+    assert products.status_code == 200 and len(products.json['result']) == 2
+    finalized = call('guardarInventario', inventory_payload())
+    assert finalized.status_code == 200 and finalized.json['result']['correcto']
+    assert c.sheets.writes == 1
+    for path in ('/auth/activity', '/auth/status'):
+        assert client.post(path, base_url=APACHE_INTERNAL_URL, headers=APACHE_HEADERS, json={}).status_code == 204
+    filters = dict(fecha='2026-09-18', puntoVenta='BR00 - PDV 0', bodega='BR03', consecutivo='897')
+    before = c.drive.calls + c.sheets.reads
+    for method in ('obtenerConteoConsolidadoPDV', 'generarDescargaConteosMensuales', 'generarPlanoSiesaMensual'):
+        assert call(method, filters).status_code == (200 if admin else 403)
+    if not admin:
+        assert c.drive.calls + c.sheets.reads == before
+
+
+@pytest.mark.parametrize('site', ['same-origin', 'same-site'])
+def test_apache_fetch_site_still_requires_matching_origin(apache_client, site):
+    headers = {**APACHE_HEADERS, 'Sec-Fetch-Site': site}
+    assert apache_client.post('/auth/activity', base_url=APACHE_INTERNAL_URL,
+                              headers=headers, json={}).status_code == 204
+    headers['Origin'] = 'https://intranet.calcoweb.net'
+    assert apache_client.post('/auth/activity', base_url=APACHE_INTERNAL_URL,
+                              headers=headers, json={}).status_code == 403
+
+
+@pytest.mark.parametrize('path,status', [
+    ('/auth/activity', 204),
+    ('/api/obtenerPuntosVenta', 200),
+    ('/api/obtenerEstadoAdministrador', 200),
+])
+def test_actual_https_vhost_misconfiguration_and_correction(apache_client, path, status):
+    # Exact active Apache directives supplied by the operator, not a guessed cause.
+    wrong = {**APACHE_HEADERS, 'X-Forwarded-Proto': 'http', 'X-Forwarded-Port': '80'}
+    with apache_client:
+        rejected = apache_client.post(path, base_url=APACHE_INTERNAL_URL, headers=wrong, json={'args': []})
+        assert rejected.status_code == 403
+        assert rejected.json == {'error': 'Origen de solicitud no permitido.'}
+        assert request.scheme == 'http'
+        assert request.host == APACHE_HOST
+        assert request.host_url == APACHE_INTERNAL_URL + '/'
+    with apache_client:
+        allowed = apache_client.post(path, base_url=APACHE_INTERNAL_URL,
+                                     headers=APACHE_HEADERS, json={'args': []})
+        assert allowed.status_code == status
+        assert request.scheme == 'https'
+        assert request.host == APACHE_HOST
+        assert request.host_url == APACHE_EXTERNAL_URL + '/'

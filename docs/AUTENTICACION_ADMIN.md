@@ -11,7 +11,7 @@ No se encontró un dominio mensual previsto en código ni documentación.
 
 En Apps Script, `Session.getActiveUser().getEmail()` identificaba al usuario activo
 de la aplicación. Su correo se normalizaba con trim y minúsculas y se contrastaba
-con `CORREOS_ADMIN`. La única dirección autorizada sigue siendo:
+con `CORREOS_ADMIN`. La dirección original autorizada era:
 
 `info.costos@crepesywafflesantioquia.com`
 
@@ -21,7 +21,11 @@ con `CORREOS_ADMIN`. La única dirección autorizada sigue siendo:
 `register_auth` lo conecta al email de `g.auth_session`, después de validar la
 cookie interna. Un proveedor externo inyectado no puede reemplazar esa identidad
 cuando está habilitado el SSO.
-El servicio aplica `strip().lower()` y compara con la dirección exacta anterior.
+El servicio aplica `strip().lower()` y compara con `ADMIN_EMAILS` en
+`app/services/identity.py`: conserva `info.costos@crepesywafflesantioquia.com` y
+añade temporalmente `juan.zapata@crepesywaffles.com` mientras se resuelve el acceso
+del administrador original a la intranet. Para retirar ese permiso temporal basta
+eliminar la segunda dirección de esa lista; no modificar el administrador original.
 El proveedor se consulta nuevamente en cada operación; no se cachea la autorización.
 
 La autenticación WordPress/JWT ya está implementada: RS256 de corta vida,
@@ -41,6 +45,8 @@ coincida con la dirección administrativa.
 |---|---|
 | `empleado@crepesywafflesantioquia.com` | Denegada |
 | `info.costos@crepesywafflesantioquia.com` | Permitida |
+| `juan.zapata@crepesywaffles.com` | Permitida temporalmente |
+| `empleado@crepesywaffles.com` | Denegada solo para funciones administrativas |
 | Misma dirección en mayúsculas o con espacios externos | Permitida tras normalizar |
 | Correo vacío o usuario no autenticado | Denegada |
 
@@ -57,6 +63,11 @@ solamente si devuelve `esAdministrador=true`; false o error lo mantienen oculto.
 El backend vuelve a autorizar consolidado, CSV y plano Siesa mediante
 `IdentityService.require_admin` antes de consultar datos. Ocultar o modificar
 el botón no cambia los permisos.
+
+El usuario normal autenticado puede cargar PDV, categorías y productos, Guardar
+borrador, Finalizar y usar actividad/estado de sesión. Consultar
+`obtenerEstadoAdministrador` devuelve HTTP 200 con `esAdministrador=false`;
+los endpoints exclusivamente administrativos siguen devolviendo HTTP 403.
 
 Evidencia: `tests/test_identity.py` comprueba los correos anteriores, autorización
 de cada endpoint, reevaluación por solicitud, independencia del OAuth y rechazo
@@ -134,12 +145,51 @@ Referencia exacta inspeccionada de Uno a Uno (SHA-256):
 | GET /auth/expired | Público; pantalla de reingreso |
 | GET /healthz | Público; devuelve status=ok sin Google |
 | /, /api/* y archivos estáticos | Sesión vigente |
-| Consolidado, CSV y Siesa | Además, email del administrador exacto |
+| Consolidado, CSV y Siesa | Además, email incluido en ADMIN_EMAILS |
 
 POST /auth/status conserva la convención real de Uno a Uno. GET es la misma
 operación consultiva solicitada, sin un segundo mecanismo de estado.
 Las mutaciones requieren X-Monthly-Request: 1 y rechazan Origin de otro esquema/host
-o Sec-Fetch-Site: cross-site. No se agregó confianza en headers de identidad o proxy.
+o Sec-Fetch-Site: cross-site. No se confía en headers de identidad.
+
+## Proxy HTTPS y diagnóstico de origen
+
+La fábrica ya configura `ProxyFix(x_for=0, x_proto=1, x_host=0, x_port=1, x_prefix=0)`.
+Confía en un salto de Apache para protocolo/puerto y mantiene el Host preservado
+por Apache. El backend debe seguir limitado a `127.0.0.1:8089`.
+Con `Host: inventarios-mensuales.calcoweb.net`, `X-Forwarded-Proto: https` y
+`X-Forwarded-Port: 443`, Flask obtiene esquema `https`, host sin puerto por defecto
+y `host_url=https://inventarios-mensuales.calcoweb.net/`. TRUSTED_HOSTS sigue activo.
+
+Tanto api.js como auth.js envían `X-Monthly-Request: 1` y
+`credentials: same-origin`. No requieren cambios. Las pruebas simulan POST SSO y
+redirección desde una intranet de otro sitio y desde un subdominio del mismo sitio:
+los fetch posteriores envían Origin de Mensuales. Chromium corre sin red y todas
+las solicitudes se interceptan hacia Flask test client. Fetch Metadata puede no
+estar aún disponible en esa fase de interceptación; los casos HTTP verifican
+explícitamente same-origin, same-site y cross-site. Same-site no permite un Origin
+distinto; cross-site sigue rechazado. No se amplió la política de origen.
+
+El operador confirmó que ProxyFix también estaba instalado con esos parámetros
+en el contenedor. El VirtualHost HTTPS activo, identificado por `apache2ctl -S`
+en `/etc/apache2/sites-enabled/inventarios-mensuales-le-ssl.conf`, enviaba realmente
+`X-Forwarded-Proto: http` y `X-Forwarded-Port: 80`. Las pruebas reproducen con esos
+valores el 403 en actividad, PDV y estado administrativo: Flask reconstruye HTTP
+y falla la comparación del esquema con el Origin HTTPS, aunque host, marcador
+y Sec-Fetch-Site sean correctos. La cookie de sesión se valida antes.
+
+La corrección externa pendiente es usar en ese VirtualHost de puerto 443:
+
+```apache
+RequestHeader set X-Forwarded-Proto "https"
+RequestHeader set X-Forwarded-Port "443"
+```
+
+Se conservan ProxyPreserveHost y el destino `http://127.0.0.1:8089/` del proxy.
+Con las dos cabeceras corregidas, las mismas solicitudes de prueba devuelven
+204 en actividad y 200 en PDV/estado administrativo. No hacen falta cambios en
+.env, frontend ni en la comparación de Origin. Esta tarea no modifica Apache,
+no aplica la corrección en producción ni conserva logging temporal de diagnóstico.
 
 ## Replay y alcance
 
@@ -159,8 +209,10 @@ SESSION_JWT_SECRET propio de al menos 32 bytes aleatorios. Se rechazan claves
 privadas, claves no RSA, RSA menor a 2048 bits y secretos insuficientes.
 
 El operador configurará APP_ENV=production, AUTH_ENABLED=true, SESSION_COOKIE_SECURE=true,
-el enlace INTRANET_URL y el host permitido en config['TRUSTED_HOSTS'] cuando se
-conozca el dominio. SESSION_IDLE_TIMEOUT_SECONDS permanece en 1200.
+el enlace INTRANET_URL y
+`TRUSTED_HOSTS=localhost,127.0.0.1,inventarios-mensuales.calcoweb.net`.
+SESSION_IDLE_TIMEOUT_SECONDS permanece en 1200. El administrador temporal no
+requiere nuevas variables de entorno ni cambios en WordPress o Apache.
 No se crearon claves de producción ni se cambiaron paths, WordPress o infraestructura.
 
 ## Snippet Woody para los dos aplicativos
@@ -205,3 +257,9 @@ tests/test_sso_browser.py transporta la cookie real emitida por el endpoint de
 prueba a Chromium y comprueba expiración por timer/401, borrador intacto y recuperación
 tras otro login. El 303 del canje se verifica por separado con Flask test client.
 Ninguna de estas pruebas usa WordPress/Google reales ni abre un servidor.
+
+Revisión de producción y administrador temporal: 193 pruebas específicas aprobadas
+(test_sso, test_identity, test_sso_browser y test_config), seguidas de 351 pruebas
+aprobadas en la suite completa con `python -B -m pytest -q`, sin fallos ni omisiones.
+Incluye seis recorridos de navegador con SSO simulado y Guardar/Finalizar contra
+fakes, y la reproducción del 403 con las directivas Apache reales aportadas.

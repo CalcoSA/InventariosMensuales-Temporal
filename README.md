@@ -111,8 +111,8 @@ credentials/           cliente y token OAuth excluidos de Git
 
 La administración deniega por defecto. Con AUTH_ENABLED=true, POST /auth/sso
 valida JWT RS256 del emisor calco-intranet para inventarios-mensuales y conecta
-IdentityService al email firmado de la sesión interna. Solo
-info.costos@crepesywafflesantioquia.com tiene permisos administrativos.
+IdentityService al email firmado de la sesión interna. Tienen permisos administrativos
+info.costos@crepesywafflesantioquia.com y, temporalmente, juan.zapata@crepesywaffles.com.
 No se aceptan correos por querystring, encabezados arbitrarios ni OAuth técnico.
 El contrato está en [Autenticación administrativa](docs/AUTENTICACION_ADMIN.md).
 

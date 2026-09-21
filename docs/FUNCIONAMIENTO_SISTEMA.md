@@ -167,7 +167,8 @@ Base64, encabezados de usuario ni OAuth Google. Sin sesión se responde 401; una
 sesión de usuario normal recibe 403 en operaciones administrativas.
 Con autenticación deshabilitada en desarrollo no se asume identidad ni administrador.
 
-La única dirección administrativa es info.costos@crepesywafflesantioquia.com.
+Las direcciones administrativas son info.costos@crepesywafflesantioquia.com y,
+temporalmente, juan.zapata@crepesywaffles.com, normalizadas con trim y minúsculas.
 Se normaliza con strip y minúsculas. Los casos de autorización, suplantación,
 ausencia de identidad y error del frontend están probados. Contrato completo y
 responsabilidad del SSO en [AUTENTICACION_ADMIN.md](AUTENTICACION_ADMIN.md).
