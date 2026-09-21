@@ -22,7 +22,7 @@ class Container:
         self.sheets = sheets or GoogleSheetsService(self.auth, self.executor, config["GOOGLE_WRITES_ENABLED"], config["TIMEZONE"])
         self.cache = ReadCache()
         self.locks = SpreadsheetLocks(config["RUNTIME_DIR"] / "locks")
-        self.identity = IdentityService(identity_provider)
+        self.identity = IdentityService(identity_provider, admin_logins=config.get("ADMIN_USER_LOGINS", ""))
         self.bases = MonthlyBasesRepository(self.drive, self.sheets, self.cache, config["FORMATS_FOLDER_ID"])
         self.inventory_repository = MonthlyInventoryRepository(self.sheets, self.cache)
         self.inventory = MonthlyInventoryService(self.bases, self.inventory_repository, self.locks, config["TIMEZONE"])

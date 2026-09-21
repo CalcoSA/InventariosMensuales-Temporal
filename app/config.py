@@ -21,6 +21,7 @@ def settings():
         "APP_ENV": app_env,
         # Validated strictly by session_auth_service, including production guards.
         "AUTH_ENABLED": os.getenv("AUTH_ENABLED", "false"),
+        "ADMIN_USER_LOGINS": os.getenv("ADMIN_USER_LOGINS", ""),
         "SSO_ISSUER": os.getenv("SSO_ISSUER", "calco-intranet"),
         "SSO_AUDIENCE": os.getenv("SSO_AUDIENCE", "inventarios-mensuales"),
         "SSO_PUBLIC_KEY_PATH": os.getenv("SSO_PUBLIC_KEY_PATH", ""),

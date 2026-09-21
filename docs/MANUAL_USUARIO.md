@@ -4,7 +4,8 @@ Este manual explica el comportamiento de la aplicación migrada. La conexión Go
 de este equipo ya fue verificada en solo lectura. Guardar y recuperar borradores
 también fueron validados manualmente. Las escrituras reales siguen deshabilitadas.
 El acceso corporativo por intranet ya está preparado y requiere que soporte
-complete su configuración. La administración utiliza el correo de esa sesión.
+complete su configuración. La administración utiliza el nombre de usuario de WordPress
+(`user_login`) de esa sesión, aunque ese nombre tenga formato de correo.
 
 ## 1. Ingresar a la aplicación
 
@@ -186,8 +187,9 @@ durante la migración. El catálogo y las bases no se eliminan.
 
 ## Administración
 
-Tienen autorización administrativa las identidades corporativas autenticadas de
-info.costos@crepesywafflesantioquia.com y, temporalmente, juan.zapata@crepesywaffles.com.
+Tienen autorización administrativa los usuarios autenticados cuyo `user_login` está
+incluido en `ADMIN_USER_LOGINS`, configurado por soporte en el `.env` de la aplicación.
+No se usa el correo de contacto `user_email` ni hay administradores predeterminados.
 Si soporte aún no conectó la identidad, el botón no aparecerá.
 Usar la cuenta técnica Google no concede por sí solo esta autorización.
 

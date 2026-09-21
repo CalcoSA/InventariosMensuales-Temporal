@@ -1,6 +1,39 @@
 # Estado de validación
 
-## Estado actual — cierre SSO/JWT del 21 de septiembre de 2026
+## Estado actual — user_login y administradores desde el entorno
+
+Se retomó el cambio parcial a `user_login` sin rehacer la migración. El backend
+usa exclusivamente el `sub` firmado por WordPress, que ya contiene `user_login`;
+`usuario`, si está presente, debe coincidir. `email` no es obligatorio ni concede
+permisos. Se conservan firma, issuer/audience, replay, cookie y 1200 segundos de
+inactividad, así como Origin, TRUSTED_HOSTS y la configuración existente de ProxyFix.
+
+`ADMIN_USER_LOGINS` se lee del entorno al crear la aplicación: comas, trim y
+minúsculas, coincidencias exactas y sin comodines. Lista ausente o vacía = ningún
+administrador. Se eliminaron los administradores fijos del backend. El `.env` local
+contiene los siete logins confirmados por el usuario y continúa excluido de Git;
+se verificó que las demás variables no cambiaron. No se presume que un correo sea
+un login: esos valores se comparan literalmente con `user_login`, sin quitar dominios.
+
+Completadas pruebas de configuración desde el entorno, SSO sin email, email ajeno
+sin privilegios, logins con formato de correo, retirada de permisos al cargar una
+lista nueva incluso con cookie antigua, y flujo de inventario normal en Chromium.
+Los usuarios y claves de prueba son ficticios. Google permanece simulado.
+
+Validación final:
+
+- `python -B -m pytest -q -x tests/test_identity.py tests/test_config.py tests/test_sso.py tests/test_sso_browser.py`: **217 aprobadas**.
+- `python -B -m pytest -q`: **375 aprobadas, sin fallos ni omisiones**, en 51,37 segundos.
+- `git diff --check`: sin errores.
+- PHP CLI no está instalado; no se ejecutó el snippet de referencia. El cambio
+  conserva el payload de Uno a Uno y omite email únicamente para Mensuales.
+
+La referencia Woody anterior sigue siendo compatible porque ya firma `sub=user_login`.
+Queda al operador aplicar el backend y la misma variable en el entorno productivo;
+no se realizó deployment, commit, push, modificación de Apache ni inicio de servidores.
+Las validaciones siguientes se conservan como registros históricos.
+
+## Registro anterior — cierre SSO/JWT del 21 de septiembre de 2026
 
 Se retomó el repositorio limpio en e566ab0. La migración tenía 168 pruebas aprobadas
 y autorización administrativa mediante IdentityService, pero ningún login JWT,

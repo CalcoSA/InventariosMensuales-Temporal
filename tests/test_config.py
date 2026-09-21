@@ -3,7 +3,7 @@ import pytest
 
 from app import create_app
 from app.config import settings
-from tests.conftest import make_container
+from tests.conftest import make_container, rpc
 
 
 DOMAIN = "inventarios-mensuales.calcoweb.net"
@@ -67,3 +67,26 @@ def test_configured_hosts_are_enforced(monkeypatch, tmp_path, host, status):
     if status == 200:
         assert response.json == {"status": "ok"}
     assert container.drive.calls == container.sheets.reads == container.sheets.writes == 0
+
+
+@pytest.mark.parametrize("configured,username,allowed", [
+    (None, "admin.pruebas", False),
+    ("", "admin.pruebas", False),
+    (" , , ", "admin.pruebas", False),
+    (" admin.pruebas, EMAIL.USER@EXAMPLE.TEST, ,admin.pruebas ", " ADMIN.PRUEBAS ", True),
+    (" admin.pruebas, EMAIL.USER@EXAMPLE.TEST ", "email.user@example.test", True),
+    ("admin.pruebas,email.user@example.test", "email.user", False),
+    ("admin.pruebas,email.user@example.test", "unlisted", False),
+])
+def test_factory_uses_admin_logins_from_environment(monkeypatch, tmp_path, configured, username, allowed):
+    if configured is None:
+        monkeypatch.delenv("ADMIN_USER_LOGINS", raising=False)
+    else:
+        monkeypatch.setenv("ADMIN_USER_LOGINS", configured)
+    app = create_app({"TESTING": True, "APP_ENV": "testing", "AUTH_ENABLED": False,
+                      "RUNTIME_DIR": tmp_path}, identity_provider=lambda: username)
+    monkeypatch.setattr(app.extensions["monthly"].auth, "credentials",
+                        lambda: pytest.fail("Authorization must not read Google credentials"))
+    response = rpc(app.test_client(), "obtenerEstadoAdministrador")
+    assert response.status_code == 200
+    assert response.json["result"] == {"esAdministrador": allowed}

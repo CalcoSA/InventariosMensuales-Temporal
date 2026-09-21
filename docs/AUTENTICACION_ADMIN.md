@@ -18,42 +18,44 @@ con `CORREOS_ADMIN`. La dirección original autorizada era:
 ## Contrato implementado en Python
 
 `IdentityService` conserva su proveedor sin argumentos. Con `AUTH_ENABLED=true`,
-`register_auth` lo conecta al email de `g.auth_session`, después de validar la
+`register_auth` lo conecta al `sub` de `g.auth_session`, después de validar la
 cookie interna. Un proveedor externo inyectado no puede reemplazar esa identidad
 cuando está habilitado el SSO.
-El servicio aplica `strip().lower()` y compara con `ADMIN_EMAILS` en
-`app/services/identity.py`: conserva `info.costos@crepesywafflesantioquia.com` y
-añade temporalmente `juan.zapata@crepesywaffles.com` mientras se resuelve el acceso
-del administrador original a la intranet. Para retirar ese permiso temporal basta
-eliminar la segunda dirección de esa lista; no modificar el administrador original.
+`sub` contiene el `user_login` de WordPress, que es la identidad autorizada. El servicio
+aplica `strip().lower()` y compara con `ADMIN_USER_LOGINS`, leído del entorno al crear
+la aplicación. La lista se separa por comas, ignora entradas vacías y duplicadas, y
+rechaza comodines y caracteres de control. Si falta o está vacía, nadie es administrador.
+No hay administradores fijos en el backend. Para agregar o retirar permisos se modifica
+esa variable y se aplica la nueva configuración al proceso/contenedor, sin cambiar código.
 El proveedor se consulta nuevamente en cada operación; no se cachea la autorización.
 
 La autenticación WordPress/JWT ya está implementada: RS256 de corta vida,
 validación de firma/emisor/audience/claims y canje por sesión interna HS256.
-El correo solo procede del JWT firmado por WordPress. No se obtiene de querystring,
+El nombre de usuario solo procede del JWT firmado por WordPress. No se obtiene de querystring,
 JSON sin firma, campos de formulario adicionales, Base64, localStorage ni headers.
 La clave privada de WordPress nunca se necesita en Flask.
 
 `credentials/credentials.json` y `credentials/token.json` permiten al proceso
 Python consultar Drive y Sheets como cuenta técnica. **Ese OAuth no identifica
 al usuario del navegador ni concede administración**, aunque la cuenta técnica
-coincida con la dirección administrativa.
+coincida con un identificador configurado como administrador.
 
 ## Comportamiento comprobado
 
 | Identidad entregada por el proveedor verificado | Administración |
 |---|---|
-| `empleado@crepesywafflesantioquia.com` | Denegada |
-| `info.costos@crepesywafflesantioquia.com` | Permitida |
-| `juan.zapata@crepesywaffles.com` | Permitida temporalmente |
-| `empleado@crepesywaffles.com` | Denegada solo para funciones administrativas |
-| Misma dirección en mayúsculas o con espacios externos | Permitida tras normalizar |
-| Correo vacío o usuario no autenticado | Denegada |
+| `user_login` incluido en ADMIN_USER_LOGINS | Permitida |
+| `user_login` no incluido | Denegada solo para funciones administrativas |
+| Mismo login en mayúsculas o con espacios externos | Permitida tras normalizar |
+| `email` coincide, pero `sub` no está incluido | Denegada |
+| ADMIN_USER_LOGINS vacío o ausente | Denegada para todos |
+| Usuario no autenticado | Denegada |
 
 La configuración local conserva `AUTH_ENABLED=false`: sin proveedor inyectado,
 el botón permanece oculto y los endpoints administrativos responden 403. Con SSO
 habilitado y sin sesión válida se responde 401, incluso antes de comprobar permisos.
-Un email faltante o mal formado se rechaza en el login. No existe un usuario falso
+Un `sub` faltante, vacío o inválido se rechaza en el login; `email` no se exige ni se usa.
+No existe un usuario falso
 de producción; `APP_ENV=production` exige autenticación, cookie Secure y DEBUG=false.
 Las identidades simuladas se definen exclusivamente en `tests/` y sus aplicaciones
 usan `TESTING=True`. Esa opción por sí sola tampoco concede permisos.
@@ -69,7 +71,7 @@ borrador, Finalizar y usar actividad/estado de sesión. Consultar
 `obtenerEstadoAdministrador` devuelve HTTP 200 con `esAdministrador=false`;
 los endpoints exclusivamente administrativos siguen devolviendo HTTP 403.
 
-Evidencia: `tests/test_identity.py` comprueba los correos anteriores, autorización
+Evidencia: `tests/test_identity.py` comprueba la lista configurable de usuarios, autorización
 de cada endpoint, reevaluación por solicitud, independencia del OAuth y rechazo
 de identidad falsificada mediante querystring, JSON, Base64 y encabezados.
 `tests/test_frontend.py` comprueba interfaz administrativa, usuario normal,
@@ -88,24 +90,29 @@ El token SSO no se devuelve en la URL, página, logs ni cookie de sesión.
 | aud | `inventarios-mensuales`; valor NUEVO definido en esta tarea |
 | sub | Obligatorio; user_login no vacío, hasta 256 caracteres |
 | usuario | Opcional; si viene debe coincidir exactamente con sub |
-| email | Obligatorio; user_email firmado, formato básico válido, normalizado |
+| email | No requerido; se ignora si está presente, sin conceder permisos |
 | iat / nbf / exp | Enteros; iat ≤ nbf < exp; vida máxima predeterminada 60 segundos |
 | jti | Obligatorio, texto no vacío hasta 256 caracteres; consumo único |
 
 El margen de reloj SSO es 10 segundos como en Uno a Uno; la sesión interna no
 tiene ese margen. Un token para `inventarios-uno-a-uno` se rechaza en Mensuales,
 incluso firmado con la misma clave RSA. El snippet firma sub y usuario con
-`$user->user_login` y email con `$user->user_email`.
+`$user->user_login`. El snippet de referencia ya no incluye email para Mensuales;
+conserva ese campo para Uno a Uno para no modificar su contrato.
 
 ## Sesión e inactividad: misma política de Uno a Uno
 
 `SESSION_IDLE_TIMEOUT_SECONDS=1200` significa **20 minutos desde la última actividad
 real**, no desde el login. La sesión puede continuar mientras haya actividad.
 La cookie se llama `inventario_mensual_session` y contiene un JWT HS256 propio:
-iss `inventarios-mensuales`, aud `inventarios-mensuales-session`, sub, email, iat,
+iss `inventarios-mensuales`, aud `inventarios-mensuales-session`, sub, iat,
 act, exp y sid. El secreto de esta sesión debe ser independiente del de Uno a Uno,
 de RSA y de OAuth. Cookie HttpOnly, SameSite=Lax, Path=/ y sin Domain compartido;
 Secure es obligatorio en producción. Su Max-Age es el tiempo de sesión restante.
+
+Las sesiones anteriores con `email` adicional siguen validando su firma, expiración
+y `sub`; ese email se ignora para autorizar. Si se retira el login de la configuración,
+la instancia que cargue la nueva lista lo deniega incluso con una cookie aún vigente.
 
 Se reutilizaron SessionAuthService y auth.js del repositorio local de Uno a Uno:
 
@@ -145,7 +152,7 @@ Referencia exacta inspeccionada de Uno a Uno (SHA-256):
 | GET /auth/expired | Público; pantalla de reingreso |
 | GET /healthz | Público; devuelve status=ok sin Google |
 | /, /api/* y archivos estáticos | Sesión vigente |
-| Consolidado, CSV y Siesa | Además, email incluido en ADMIN_EMAILS |
+| Consolidado, CSV y Siesa | Además, user_login incluido en ADMIN_USER_LOGINS |
 
 POST /auth/status conserva la convención real de Uno a Uno. GET es la misma
 operación consultiva solicitada, sin un segundo mecanismo de estado.
@@ -211,8 +218,21 @@ privadas, claves no RSA, RSA menor a 2048 bits y secretos insuficientes.
 El operador configurará APP_ENV=production, AUTH_ENABLED=true, SESSION_COOKIE_SECURE=true,
 el enlace INTRANET_URL y
 `TRUSTED_HOSTS=localhost,127.0.0.1,inventarios-mensuales.calcoweb.net`.
-SESSION_IDLE_TIMEOUT_SECONDS permanece en 1200. El administrador temporal no
-requiere nuevas variables de entorno ni cambios en WordPress o Apache.
+SESSION_IDLE_TIMEOUT_SECONDS permanece en 1200. Configurar también `ADMIN_USER_LOGINS`
+con los nombres de usuario exactos de WordPress, separados por comas. Ejemplo de formato
+(sustituir los valores de ejemplo por usuarios reales):
+
+```env
+ADMIN_USER_LOGINS=usuario.uno,usuario.dos@example.test
+```
+
+Un identificador con formato de correo solo corresponde si es realmente `user_login`;
+no se consulta `user_email` ni se deduce el usuario quitando el dominio. Los siete valores
+confirmados por el operador se guardaron en el `.env` local, excluido de Git; deben
+configurarse también en el entorno de producción al aplicar este cambio.
+El snippet anterior ya firma `sub=user_login` y sigue siendo compatible; actualizar
+la referencia Woody elimina el email del token mensual, pero no es requisito para
+que el backend use el login. Este cambio no requiere modificar Apache.
 No se crearon claves de producción ni se cambiaron paths, WordPress o infraestructura.
 
 ## Snippet Woody para los dos aplicativos
@@ -225,8 +245,8 @@ Un formulario antiguo sin selector sigue dirigiéndose a Uno a Uno.
 
 El selector calco_inventarios_app solo admite uno_a_uno o mensual. Audiences y
 destinos provienen de una whitelist fija del servidor; no se acepta una URL del
-navegador. Ambos tokens incluyen email firmado: el validador actual de Uno a Uno
-acepta claims adicionales y no usa ese email; compatibilidad revisada en su código.
+navegador. Ambos tokens incluyen `sub` y `usuario` con `user_login`. Solo el token de
+Uno a Uno conserva el campo email; Mensuales no depende de él.
 
 Reemplazar **`__INVENTARIOS_MENSUALES_URL__`** por la URL HTTPS base real de Mensuales,
 **sin barra final ni /auth/sso**. El snippet ya añade /auth/sso. Mientras quede el
@@ -249,7 +269,7 @@ No se infiere identidad administrativa del contenido de OAuth.
 ## Evidencia de pruebas
 
 tests/test_sso.py usa RSA efímera en memoria y reloj controlado. Cubre firma,
-algoritmo, audiencia, issuer, claims obligatorios, email, replay concurrente,
+algoritmo, audiencia, issuer, claims obligatorios, user_login, email ignorado, replay concurrente,
 cookie, sesión deslizante, estado sin renovación, logout, configuración y permisos.
 tests/auth_frontend.cjs ejecuta el auth.js real con reloj y dos pestañas simuladas,
 con y sin localStorage, hasta 40 minutos de actividad y expiración posterior.
@@ -258,8 +278,14 @@ prueba a Chromium y comprueba expiración por timer/401, borrador intacto y recu
 tras otro login. El 303 del canje se verifica por separado con Flask test client.
 Ninguna de estas pruebas usa WordPress/Google reales ni abre un servidor.
 
-Revisión de producción y administrador temporal: 193 pruebas específicas aprobadas
+Registro anterior de producción y administrador temporal: 193 pruebas específicas aprobadas
 (test_sso, test_identity, test_sso_browser y test_config), seguidas de 351 pruebas
 aprobadas en la suite completa con `python -B -m pytest -q`, sin fallos ni omisiones.
 Incluye seis recorridos de navegador con SSO simulado y Guardar/Finalizar contra
 fakes, y la reproducción del 403 con las directivas Apache reales aportadas.
+
+Revisión posterior de user_login y ADMIN_USER_LOGINS: **217 pruebas específicas y
+375 en la suite completa aprobadas**, sin fallos ni omisiones. Verifica que email
+no concede permisos, que la configuración admite logins con formato de correo,
+que no existen administradores implícitos y que la lista nueva se aplica incluso
+a sesiones previamente emitidas. No cambió la lógica de inventario ni se usó Google real.

@@ -6,6 +6,10 @@ from threading import Lock
 import time
 from app.constants import BASES_FOLDER_NAME, COUNTS_HEADERS, FOLDER_MIME, SHEET_MIME
 
+ADMIN_LOGIN = "admin.pruebas"
+SECOND_ADMIN_LOGIN = "supervisor.pruebas"
+TEST_ADMIN_LOGINS = ADMIN_LOGIN + "," + SECOND_ADMIN_LOGIN
+
 
 def sheet(name, rows, sheet_id=0, merged=None):
     width = max(map(len, rows), default=0)

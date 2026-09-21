@@ -111,9 +111,12 @@ credentials/           cliente y token OAuth excluidos de Git
 
 La administración deniega por defecto. Con AUTH_ENABLED=true, POST /auth/sso
 valida JWT RS256 del emisor calco-intranet para inventarios-mensuales y conecta
-IdentityService al email firmado de la sesión interna. Tienen permisos administrativos
-info.costos@crepesywafflesantioquia.com y, temporalmente, juan.zapata@crepesywaffles.com.
-No se aceptan correos por querystring, encabezados arbitrarios ni OAuth técnico.
+IdentityService al `user_login` firmado en `sub` de la sesión interna. Los administradores
+se configuran únicamente en `.env` mediante `ADMIN_USER_LOGINS`, separados por comas,
+con trim y minúsculas. Vacío significa que nadie es administrador; no hay usuarios
+predeterminados en el backend. Un login puede tener formato de correo, pero debe coincidir
+con `user_login`, no con `user_email`. No se acepta identidad por querystring, encabezados
+arbitrarios ni OAuth técnico. La lista se carga al iniciar la aplicación.
 El contrato está en [Autenticación administrativa](docs/AUTENTICACION_ADMIN.md).
 
 ## SSO y sesión

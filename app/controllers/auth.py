@@ -30,7 +30,7 @@ def register_auth(app):
     app.extensions["session_auth"] = SessionAuthService(app.config, public_key) if enabled else None
     if enabled:
         # Keep the existing admin abstraction, but only feed it a verified session.
-        app.extensions["monthly"].identity.provider = lambda: getattr(g, "auth_session", {}).get("email")
+        app.extensions["monthly"].identity.provider = lambda: getattr(g, "auth_session", {}).get("sub")
     app.register_blueprint(auth)
 
     @app.get("/healthz")

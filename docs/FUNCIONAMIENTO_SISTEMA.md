@@ -161,15 +161,18 @@ sin el mismo mecanismo de exclusión. No se agregó coordinación distribuida.
 ## Administración e identidad
 
 IdentityService conserva su proveedor callable. Con AUTH_ENABLED=true se conecta
-al email de la sesión validada por el SSO WordPress RS256; el canje crea una cookie
+al `sub` de la sesión validada por el SSO WordPress RS256, que contiene `user_login`;
+el canje crea una cookie
 HttpOnly con JWT interno HS256 independiente. No obtiene identidad de parámetros,
 Base64, encabezados de usuario ni OAuth Google. Sin sesión se responde 401; una
 sesión de usuario normal recibe 403 en operaciones administrativas.
 Con autenticación deshabilitada en desarrollo no se asume identidad ni administrador.
 
-Las direcciones administrativas son info.costos@crepesywafflesantioquia.com y,
-temporalmente, juan.zapata@crepesywaffles.com, normalizadas con trim y minúsculas.
-Se normaliza con strip y minúsculas. Los casos de autorización, suplantación,
+Los administradores se leen al iniciar desde `ADMIN_USER_LOGINS` en `.env`, separados
+por comas y normalizados con strip y minúsculas. La lista vacía no autoriza a nadie.
+Un login con formato de correo es válido, pero no se deriva de `user_email` ni se
+quita su dominio. No hay direcciones o usuarios privilegiados fijos en el backend.
+Los casos de autorización, suplantación,
 ausencia de identidad y error del frontend están probados. Contrato completo y
 responsabilidad del SSO en [AUTENTICACION_ADMIN.md](AUTENTICACION_ADMIN.md).
 Se reutilizó el patrón de sesión de Uno a Uno, sin modificar ese repositorio.

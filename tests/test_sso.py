@@ -12,9 +12,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
 
 from app import create_app
-from app.constants import ADMIN_EMAIL
 from tests.conftest import make_container, rpc
-from tests.fakes import payload as inventory_payload
+from tests.fakes import ADMIN_LOGIN, SECOND_ADMIN_LOGIN, TEST_ADMIN_LOGINS, payload as inventory_payload
 from app.services.session_auth_service import ReplayCache, SessionAuthService
 
 HEADERS = {'X-Monthly-Request': '1', 'Origin': 'http://localhost'}
@@ -54,7 +53,7 @@ def auth_config(tmp_path, private_key):
     return {'TESTING': True, 'APP_ENV': 'testing', 'DEBUG': False, 'AUTH_ENABLED': True,
             'SSO_PUBLIC_KEY_PATH': str(public), 'SESSION_COOKIE_SECURE': False,
             'SESSION_JWT_SECRET': 'test-only-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-            'SESSION_IDLE_TIMEOUT_SECONDS': 1200}
+            'SESSION_IDLE_TIMEOUT_SECONDS': 1200, 'ADMIN_USER_LOGINS': TEST_ADMIN_LOGINS}
 
 
 @pytest.fixture
@@ -70,7 +69,7 @@ def client(app):
 @pytest.fixture
 def token(private_key, clock):
     def make(changes=None, omit=(), key=None, algorithm='RS256', headers=None):
-        claims = {'iss': 'calco-intranet', 'aud': 'inventarios-mensuales', 'sub': 'wp.usuario', 'usuario': 'wp.usuario', 'email': 'empleado@crepesywafflesantioquia.com',
+        claims = {'iss': 'calco-intranet', 'aud': 'inventarios-mensuales', 'sub': 'wp.usuario', 'usuario': 'wp.usuario',
                   'iat': clock.value, 'nbf': clock.value, 'exp': clock.value + 60, 'jti': uuid.uuid4().hex}
         claims.update(changes or {})
         for field in omit:
@@ -120,7 +119,7 @@ def test_invalid_sso_claims(client, token, changes):
     assert not client.get_cookie('inventario_mensual_session')
 
 
-@pytest.mark.parametrize('field', ['iss', 'aud', 'sub', 'email', 'iat', 'nbf', 'exp', 'jti'])
+@pytest.mark.parametrize('field', ['iss', 'aud', 'sub', 'iat', 'nbf', 'exp', 'jti'])
 def test_missing_sso_claim(client, token, field):
     assert client.post('/auth/sso', data={'token': token(omit=[field])}).status_code == 401
 
@@ -375,18 +374,19 @@ def test_frontend_auth_scenarios():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("email,admin", [
-    ("empleado@crepesywafflesantioquia.com", False),
-    (ADMIN_EMAIL, True),
-    (" INFO.COSTOS@CREPESYWAFFLESANTIOQUIA.COM ", True),
+@pytest.mark.parametrize("username,admin", [
+    ("empleado.pruebas", False),
+    (ADMIN_LOGIN, True),
+    (" " + ADMIN_LOGIN.upper() + " ", True),
 ])
-def test_signed_email_controls_administration(app,client,token,email,admin,monkeypatch):
+def test_signed_login_controls_administration(app,client,token,username,admin,monkeypatch):
     c=app.extensions["monthly"]
     monkeypatch.setattr(c.auth,"credentials",lambda:pytest.fail("OAuth is not user identity"))
     c.inventory.finalize(inventory_payload())
-    response=client.post("/auth/sso",data={"token":token({"email":email})})
+    response=client.post("/auth/sso",data={"token":token({"sub":username,"usuario":username})})
     assert response.status_code==303
-    assert claims(app,client)["email"]==email.strip().lower()
+    assert claims(app,client)["sub"]==username
+    assert "email" not in claims(app,client)
     assert rpc(client,"obtenerEstadoAdministrador").json["result"]=={"esAdministrador":admin}
     filters=dict(fecha="2026-09-18",puntoVenta="BR00 - PDV 0",bodega="BR03",consecutivo="897")
     for method in ("obtenerConteoConsolidadoPDV","generarDescargaConteosMensuales","generarPlanoSiesaMensual"):
@@ -396,8 +396,8 @@ def test_signed_email_controls_administration(app,client,token,email,admin,monke
 
 @pytest.mark.parametrize("changes", [
     {"aud":"inventarios-uno-a-uno"}, {"usuario":"otro"},
-    {"email":None}, {"email":""}, {"email":" "}, {"email":ADMIN_EMAIL+"\nforged"},
-    {"email":[]}, {"email":"sin-arroba"}, {"email":"a@b"}, {"email":7},
+    {"sub":None}, {"sub":""}, {"sub":" "}, {"sub":ADMIN_LOGIN+"\nforged"},
+    {"sub":[]}, {"sub":"x"*257}, {"sub":"admin\x00forged"}, {"sub":7},
 ])
 def test_monthly_rejects_invalid_identity(client,token,changes):
     assert client.post("/auth/sso",data={"token":token(changes)}).status_code==401
@@ -409,15 +409,67 @@ def test_usuario_is_optional_and_subject_is_the_login(app,client,token):
     assert claims(app,client)["sub"]=="wp.usuario"
 
 
-def test_unsigned_email_and_provider_cannot_override_signed_identity(app,client,token):
+def test_unsigned_login_and_provider_cannot_override_signed_identity(app,client,token):
     # The injected fake admin in make_container is replaced by the SSO provider.
-    assert client.post("/auth/sso",data={"token":token(),"email":ADMIN_EMAIL,"usuario":ADMIN_EMAIL}).status_code==303
-    assert claims(app,client)["email"]=="empleado@crepesywafflesantioquia.com"
+    assert client.post("/auth/sso",data={"token":token(),"sub":ADMIN_LOGIN,"usuario":ADMIN_LOGIN}).status_code==303
+    assert claims(app,client)["sub"]=="wp.usuario"
     for method in ("obtenerConteoConsolidadoPDV","generarDescargaConteosMensuales","generarPlanoSiesaMensual"):
-        response=client.post("/api/"+method+"?email="+ADMIN_EMAIL,
-                             json={"args":[{"email":ADMIN_EMAIL}]},
-                             headers={**HEADERS,"X-User-Email":ADMIN_EMAIL,"X-Forwarded-Email":ADMIN_EMAIL})
+        response=client.post("/api/"+method+"?usuario="+ADMIN_LOGIN,
+                             json={"args":[{"sub":ADMIN_LOGIN,"usuario":ADMIN_LOGIN}]},
+                             headers={**HEADERS,"X-User-Login":ADMIN_LOGIN,"X-Forwarded-User":ADMIN_LOGIN})
         assert response.status_code==403
+
+
+@pytest.mark.parametrize('email', [None, '', 'not-an-email', ADMIN_LOGIN, 'admin@example.test', {'untrusted': 'value'}])
+def test_email_claim_is_ignored_and_cannot_grant_admin(app, client, token, email):
+    response = client.post('/auth/sso', data={'token': token({'email': email})})
+    assert response.status_code == 303
+    assert claims(app, client)['sub'] == 'wp.usuario'
+    assert 'email' not in claims(app, client)
+    assert rpc(client, 'obtenerEstadoAdministrador').json['result'] == {'esAdministrador': False}
+
+
+def test_admin_login_does_not_depend_on_email(app, client, token):
+    response = client.post('/auth/sso', data={'token': token({
+        'sub': ADMIN_LOGIN, 'usuario': ADMIN_LOGIN, 'email': 'someone.else@example.test'})})
+    assert response.status_code == 303
+    assert rpc(client, 'obtenerEstadoAdministrador').json['result'] == {'esAdministrador': True}
+
+
+@pytest.mark.parametrize('username,allowed', [('login@example.test', True), ('normal.login', False)])
+def test_signed_login_with_email_format_uses_environment_not_email(
+        auth_config, clock, token, monkeypatch, tmp_path, username, allowed):
+    monkeypatch.setenv('ADMIN_USER_LOGINS', ' LOGIN@EXAMPLE.TEST, ')
+    config = {key: value for key, value in auth_config.items() if key != 'ADMIN_USER_LOGINS'}
+    app = create_app({**config, 'RUNTIME_DIR': tmp_path})
+    monkeypatch.setattr(app.extensions['monthly'].auth, 'credentials',
+                        lambda: pytest.fail('Google OAuth cannot supply identity'))
+    client = app.test_client()
+    response = client.post('/auth/sso', data={'token': token({
+        'sub': username, 'usuario': username, 'email': 'login@example.test'})})
+    assert response.status_code == 303
+    assert rpc(client, 'obtenerEstadoAdministrador').json['result'] == {'esAdministrador': allowed}
+
+
+def test_removing_admin_from_environment_revokes_old_signed_session(
+        auth_config, clock, token, monkeypatch, tmp_path):
+    monkeypatch.setenv('ADMIN_USER_LOGINS', ADMIN_LOGIN)
+    config = {key: value for key, value in auth_config.items() if key != 'ADMIN_USER_LOGINS'}
+    app = create_app({**config, 'RUNTIME_DIR': tmp_path})
+    client = app.test_client()
+    response = client.post('/auth/sso', data={'token': token({'sub': ADMIN_LOGIN, 'usuario': ADMIN_LOGIN})})
+    assert response.status_code == 303
+    assert rpc(client, 'obtenerEstadoAdministrador').json['result'] == {'esAdministrador': True}
+    # A pre-migration cookie may contain email; only its signed sub determines identity.
+    previous_claims = {**claims(app, client), 'email': 'former.admin@example.test'}
+    old_cookie = jwt.encode(previous_claims, config['SESSION_JWT_SECRET'], algorithm='HS256')
+    monkeypatch.setenv('ADMIN_USER_LOGINS', '')
+    restarted = create_app({**config, 'RUNTIME_DIR': tmp_path})
+    restarted_client = restarted.test_client()
+    restarted_client.set_cookie(restarted.config['SESSION_JWT_COOKIE_NAME'], old_cookie)
+    assert restarted_client.get('/').status_code == 200
+    assert rpc(restarted_client, 'obtenerEstadoAdministrador').json['result'] == {'esAdministrador': False}
+    assert rpc(restarted_client, 'obtenerConteoConsolidadoPDV', {}).status_code == 403
 
 
 def test_api_polling_and_get_status_do_not_extend_session(app,client,token,clock):
@@ -545,19 +597,19 @@ def test_apache_trusts_only_last_proto_port_and_ignores_other_forwarded_headers(
         assert request.script_root == ''
 
 
-@pytest.mark.parametrize('email,admin', [
-    ('empleado@crepesywaffles.com', False),
-    ('juan.zapata@crepesywaffles.com', True),
-    (' JUAN.ZAPATA@CREPESYWAFFLES.COM ', True),
-    (ADMIN_EMAIL, True),
-    (' INFO.COSTOS@CREPESYWAFFLESANTIOQUIA.COM ', True),
+@pytest.mark.parametrize('username,admin', [
+    ('empleado.pruebas', False),
+    (SECOND_ADMIN_LOGIN, True),
+    (' ' + SECOND_ADMIN_LOGIN.upper() + ' ', True),
+    (ADMIN_LOGIN, True),
+    (' ' + ADMIN_LOGIN.upper() + ' ', True),
 ])
-def test_apache_signed_identity_inventory_and_admin_permissions(apache_app, token, monkeypatch, email, admin):
+def test_apache_signed_identity_inventory_and_admin_permissions(apache_app, token, monkeypatch, username, admin):
     c = apache_app.extensions['monthly']
     monkeypatch.setattr(c.auth, 'credentials', lambda: pytest.fail('OAuth is not user identity'))
     client = apache_app.test_client()
     assert client.post('/auth/sso', base_url=APACHE_INTERNAL_URL, headers=APACHE_HEADERS,
-                       data={'token': token({'email': email})}).status_code == 303
+                       data={'token': token({'sub': username, 'usuario': username})}).status_code == 303
     assert client.get('/', base_url=APACHE_INTERNAL_URL, headers=APACHE_HEADERS).status_code == 200
 
     def call(method, *args):

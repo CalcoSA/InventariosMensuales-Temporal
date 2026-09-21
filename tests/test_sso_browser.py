@@ -9,6 +9,7 @@ from tests.conftest import make_container
 from tests.test_frontend import browser, select_category
 from tests.test_sso import auth_config, clock, private_key, token
 from tests.test_sso import apache_app, APACHE_HOST, APACHE_EXTERNAL_URL
+from tests.fakes import ADMIN_LOGIN, SECOND_ADMIN_LOGIN
 
 
 @pytest.fixture
@@ -81,7 +82,7 @@ def test_expired_session_preserves_and_recovers_monthly_draft(signed_ui,clock,tr
 @pytest.fixture
 def production_ui(browser, apache_app, clock, token, request):
     """Intercept every URL: a simulated intranet POST, Apache and Google fakes."""
-    email, intranet_host = request.param
+    username, intranet_host = request.param
     client = apache_app.test_client(use_cookies=False)
     context = browser.new_context(viewport={'width': 1280, 'height': 1000}, locale='es-CO',
                                   timezone_id='America/Bogota', service_workers='block', offline=True)
@@ -101,7 +102,7 @@ def production_ui(browser, apache_app, clock, token, request):
         url = urlsplit(browser_request.url)
         if url.hostname == intranet_host:
             # Ephemeral signed JWT only; no production cookies, keys or WordPress calls.
-            encoded = token({'email': email})
+            encoded = token({'sub': username, 'usuario': username})
             route.fulfill(content_type='text/html', body=(
                 f'<form method="post" action="{APACHE_EXTERNAL_URL}/auth/sso">'
                 f'<input type="hidden" name="token" value="{encoded}">'
@@ -132,20 +133,18 @@ def production_ui(browser, apache_app, clock, token, request):
         page.get_by_role('button', name='Entrar', exact=True).click()
         expect(page).to_have_url(APACHE_EXTERNAL_URL + '/')
         expect(page.locator('#puntoVenta option')).to_have_count(2)
-        yield page, apache_app.extensions['monthly'], calls, email
+        yield page, apache_app.extensions['monthly'], calls, username
     finally:
         context.close()
 
 
 @pytest.mark.parametrize('production_ui', [
-    (email, intranet) for email in ('empleado@crepesywaffles.com',
-                                    'juan.zapata@crepesywaffles.com',
-                                    'info.costos@crepesywafflesantioquia.com')
+    (username, intranet) for username in ('empleado.pruebas', ADMIN_LOGIN, SECOND_ADMIN_LOGIN)
     for intranet in ('intranet.example.test', 'intranet.calcoweb.net')
 ], indirect=True)
 def test_production_sso_browser_inventory_and_request_headers(production_ui):
-    page, c, calls, email = production_ui
-    if email == 'empleado@crepesywaffles.com':
+    page, c, calls, username = production_ui
+    if username == 'empleado.pruebas':
         expect(page.locator('#botonAdministracion')).to_be_hidden()
     else:
         expect(page.locator('#botonAdministracion')).to_be_visible()

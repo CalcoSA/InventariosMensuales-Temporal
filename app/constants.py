@@ -10,7 +10,6 @@ COUNTS_HEADERS = [
     "ID Registro", "Fecha y hora", "Fecha inventario", "Punto de venta",
     "Categoría", "Item", "Nombre Producto", "Desc. U.M.", "Cerrado", "Abierto", "Total",
 ]
-ADMIN_EMAIL = "info.costos@crepesywafflesantioquia.com"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 CACHE_PDV_SECONDS = 600
 CACHE_FILE_SECONDS = 21600

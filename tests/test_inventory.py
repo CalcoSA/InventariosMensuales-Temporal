@@ -3,13 +3,13 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import base64
 import pytest
-from app.constants import COUNTS_HEADERS, ADMIN_EMAIL
+from app.constants import COUNTS_HEADERS
 from app.models.errors import DomainError, DuplicateInventory, WriteUncertain
 from app.models.text import valid_date
 from app.models.sheets import decode_book, cell_data
 from app.services.monthly_inventory import validate_payload, validate_integrity
 from app.services.monthly_cleanup import partition_counts
-from tests.fakes import payload, sheet
+from tests.fakes import ADMIN_LOGIN, payload, sheet
 from tests.conftest import rpc
 
 
@@ -187,4 +187,4 @@ def test_http_routes_security_and_errors(client,container):
     for method in ("obtenerConteoConsolidadoPDV","generarDescargaConteosMensuales","generarPlanoSiesaMensual"):
         assert rpc(client,method,{}).status_code==403
     assert client.post("/api/generarPlanoSiesaMensual?usuario=abc",json={"args":[{}]},
-                       headers={"X-Monthly-Request":"1","X-User-Email":ADMIN_EMAIL}).status_code==403
+                       headers={"X-Monthly-Request":"1","X-User-Login":ADMIN_LOGIN}).status_code==403

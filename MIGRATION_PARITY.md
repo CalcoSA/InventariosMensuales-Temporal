@@ -72,7 +72,7 @@ una prueba diferencial. Las escrituras reales siguen deshabilitadas.
 | `normalizar_` | models.text.normalize | tests/test_differential.py | D |
 | `doGet` | controllers.web.index | tests/test_frontend.py::test_original_visual_parity | F: comparación visual escritorio/móvil |
 | `obtenerEstadoAdministrador` | RPC + IdentityService.is_admin | tests/test_identity.py; tests/test_frontend.py | F |
-| `obtenerCorreoUsuario_` | IdentityService.email + sesión SSO verificada | tests/test_identity.py; tests/test_sso.py | F/R: email firmado; configuración productiva pendiente |
+| `obtenerCorreoUsuario_` | IdentityService.username + sesión SSO verificada | tests/test_identity.py; tests/test_sso.py | R: cambio solicitado a user_login firmado en sub y ADMIN_USER_LOGINS configurable |
 | `esCorreoAdministrador_` | IdentityService.is_admin | tests/test_identity.py; tests/test_frontend.py | F |
 | `validarAccesoAdministrador_` | IdentityService.require_admin | tests/test_identity.py; tests/test_frontend.py | F |
 | `obtenerCarpetaBasesMensuales_` | MonthlyBasesRepository.folder | tests/test_inventory.py; tests/test_concurrency.py | F/R |

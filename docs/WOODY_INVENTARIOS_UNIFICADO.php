@@ -75,12 +75,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['calco_inventarios_sso
         'aud' => $selected_app['audience'],
         'sub' => $user->user_login,
         'usuario' => $user->user_login,
-        'email' => $user->user_email,
         'iat' => $now,
         'nbf' => $now,
         'exp' => $now + 60,
         'jti' => bin2hex(random_bytes(32))
     );
+    // Mensuales identifica por user_login (sub/usuario). Conservar contrato de Uno a Uno.
+    if ($app_key === 'uno_a_uno') {
+        $payload['email'] = $user->user_email;
+    }
     $encoded_header = calco_inventarios_b64url(wp_json_encode($header));
     $encoded_payload = calco_inventarios_b64url(wp_json_encode($payload));
     $signing_input = $encoded_header . '.' . $encoded_payload;

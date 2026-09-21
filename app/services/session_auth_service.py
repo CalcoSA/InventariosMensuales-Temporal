@@ -1,4 +1,4 @@
-"""Same inactivity/session policy as Uno a Uno; adds the signed monthly email."""
+"""Same inactivity/session policy as Uno a Uno; identity is the signed WordPress login."""
 import hashlib
 import re
 import threading
@@ -104,7 +104,8 @@ class SessionAuthService:
             raise jwt.InvalidTokenError('header inválido')
         claims = jwt.decode(token, key, algorithms=[algorithm], issuer=issuer, audience=audience,
                             leeway=leeway, options={'require': required, 'strict_aud': True})
-        if not isinstance(claims['sub'], str) or not claims['sub'].strip() or len(claims['sub']) > 256:
+        if (not isinstance(claims['sub'], str) or not claims['sub'].strip() or len(claims['sub']) > 256
+                or any(ord(c) < 32 or ord(c) == 127 for c in claims['sub'])):
             raise jwt.InvalidTokenError('subject inválido')
         for field in ('iat', 'nbf', 'exp', 'act'):
             if field in claims and (type(claims[field]) is not int or claims[field] < 0):
@@ -114,7 +115,7 @@ class SessionAuthService:
     def consume_sso(self, token):
         c = self.config
         claims = self._decode(token, self.public_key, 'RS256', c['SSO_ISSUER'], c['SSO_AUDIENCE'],
-                              ['iss', 'aud', 'sub', 'email', 'iat', 'nbf', 'exp', 'jti'], c['SSO_CLOCK_SKEW_SECONDS'])
+                              ['iss', 'aud', 'sub', 'iat', 'nbf', 'exp', 'jti'], c['SSO_CLOCK_SKEW_SECONDS'])
         if not claims['iat'] <= claims['nbf'] < claims['exp']:
             raise jwt.InvalidTokenError('fechas inconsistentes')
         if not 0 < claims['exp'] - claims['iat'] <= c['SSO_TOKEN_MAX_AGE_SECONDS']:
@@ -123,33 +124,22 @@ class SessionAuthService:
             raise jwt.InvalidTokenError('token antiguo')
         if not isinstance(claims['jti'], str) or not claims['jti'].strip() or len(claims['jti']) > 256:
             raise jwt.InvalidTokenError('jti inválido')
-        email = self.valid_email(claims['email'])
         # WordPress signs both aliases; subject is authoritative when usuario is absent.
         if 'usuario' in claims and claims['usuario'] != claims['sub']:
             raise jwt.InvalidTokenError('usuario inconsistente')
         self.replay.consume(claims['jti'], claims['exp'] + c['SSO_CLOCK_SKEW_SECONDS'], self.now())
-        return self.new_session(claims['sub'], email)
+        return self.new_session(claims['sub'])
 
-    @staticmethod
-    def valid_email(value):
-        if not isinstance(value, str) or len(value) > 254:
-            raise jwt.InvalidTokenError('email inválido')
-        email = value.strip().lower()
-        if not re.fullmatch(r"[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+", email):
-            raise jwt.InvalidTokenError('email inválido')
-        return email
-
-    def new_session(self, subject, email):
+    def new_session(self, subject):
         now = self.now()
         return {'iss': self.config['SESSION_JWT_ISSUER'], 'aud': self.config['SESSION_JWT_AUDIENCE'],
-                'sub': subject, 'email': email, 'iat': now, 'act': now,
+                'sub': subject, 'iat': now, 'act': now,
                 'exp': now + self.config['SESSION_IDLE_TIMEOUT_SECONDS'], 'sid': str(uuid.uuid4())}
 
     def read_session(self, token):
         c = self.config
         claims = self._decode(token, c['SESSION_JWT_SECRET'], 'HS256', c['SESSION_JWT_ISSUER'],
-                              c['SESSION_JWT_AUDIENCE'], ['iss', 'aud', 'sub', 'email', 'iat', 'exp', 'sid', 'act'])
-        claims['email'] = self.valid_email(claims['email'])
+                              c['SESSION_JWT_AUDIENCE'], ['iss', 'aud', 'sub', 'iat', 'exp', 'sid', 'act'])
         try:
             if str(uuid.UUID(claims['sid'])) != claims['sid']:
                 raise ValueError()
