@@ -1,0 +1,55 @@
+# Independent project name also isolates --remove-orphans from Uno a Uno.
+name: inventarios-mensuales
+
+services:
+  inventarios-mensuales:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: inventarios-mensuales
+    restart: unless-stopped
+    init: true
+
+    env_file:
+      - .env
+
+    ports:
+      - "127.0.0.1:8089:8000"
+
+    # Provision these paths in the Mensuales PROD_PATH before deployment.
+    # credentials and .runtime must be writable by UID/GID 10002:10002.
+    # The existing SSO_PUBLIC_KEY_PATH in the server .env must be
+    # /run/secrets/sso/public.pem; no application variables are added here.
+    volumes:
+      - type: bind
+        source: ./credentials
+        target: /app/credentials
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.runtime
+        target: /app/.runtime
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/sso/public.pem
+        target: /run/secrets/sso/public.pem
+        read_only: true
+        bind:
+          create_host_path: false
+
+    security_opt:
+      - no-new-privileges:true
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -B
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

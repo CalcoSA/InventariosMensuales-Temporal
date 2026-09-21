@@ -1,0 +1,86 @@
+name: Deploy Inventarios Mensuales - Production
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-inventarios-mensuales-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+
+    env:
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER }}
+      # Must identify Mensuales' own directory, never the Uno a Uno directory.
+      PROD_PATH: ${{ secrets.PROD_PATH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          : "${VM_HOST:?Missing VM_HOST}" "${VM_USER:?Missing VM_USER}"
+          : "${PROD_PATH:?Missing PROD_PATH}" "${VM_SSH_KEY:?Missing VM_SSH_KEY}"
+          [[ "$PROD_PATH" == /* && "$PROD_PATH" != "/" && "$PROD_PATH" != *"/../"* && "$PROD_PATH" != */.. ]]
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Sync project to Production
+        run: |
+          set -euo pipefail
+          rsync -az --delete --protect-args \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".venv" \
+            --exclude ".env" \
+            --exclude "credentials" \
+            --exclude "secrets" \
+            --exclude ".runtime" \
+            --exclude "__pycache__" \
+            --exclude ".pytest_cache" \
+            --exclude "*.pyc" \
+            --exclude ".vscode" \
+            --exclude ".idea" \
+            -e "ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes" \
+            ./ "$VM_USER@$VM_HOST:$PROD_PATH/"
+
+      - name: Deploy with Docker Compose
+        run: |
+          set -euo pipefail
+          printf -v remote_path '%q' "$PROD_PATH"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VM_USER@$VM_HOST" "bash -se -- $remote_path" <<'REMOTE'
+            set -euo pipefail
+            cd -- "$1"
+
+            test -f .env
+            test -d credentials
+            test -d .runtime
+            test -f secrets/sso/public.pem
+
+            docker compose -f compose.prod.yaml up -d --build --remove-orphans
+
+            sleep 10
+
+            curl --fail --silent --show-error \
+              http://127.0.0.1:8089/healthz
+
+            docker compose -f compose.prod.yaml ps
+            # Prune only dangling images belonging to Mensuales on the shared host.
+            docker image prune -f --filter "label=com.calco.app=inventarios-mensuales"
+          REMOTE
