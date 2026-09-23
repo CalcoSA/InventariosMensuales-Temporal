@@ -673,14 +673,10 @@
       let borrador = [];
 
       try {
-        borrador = JSON.parse(
-          localStorage.getItem(
-            obtenerClaveBorradorPara(
-              document.getElementById('puntoVenta').value,
-              document.getElementById('fechaInventario').value,
-              estado.categoria
-            )
-          ) || '[]'
+        borrador = leerBorradorPara(
+          document.getElementById('puntoVenta').value,
+          document.getElementById('fechaInventario').value,
+          estado.categoria
         );
       } catch (error) {
         borrador = [];
@@ -688,24 +684,15 @@
 
       const tieneCantidades = borrador.some(
         registro =>
-          registro.cerrado !== '' ||
-          registro.abierto !== ''
+          (registro.cerrado != null && registro.cerrado !== '') ||
+          (registro.abierto != null && registro.abierto !== '')
       );
 
       if (!tieneCantidades) {
         return 'pendiente';
       }
 
-      const estaCompleta =
-        borrador.length === estado.totalProductos &&
-        borrador.every(registro =>
-          registro.cerrado !== '' &&
-          registro.abierto !== ''
-        );
-
-      return estaCompleta
-        ? 'completada'
-        : 'proceso';
+      return 'proceso';
     }
 
     function etiquetaEstadoCategoria(estado) {
@@ -1138,7 +1125,14 @@
 
       const categoriaGuardada = categoriaActual;
 
-      guardarBorradorAhora();
+      if (!guardarBorradorAhora()) {
+        mostrarMensaje(
+          'mensajeInventario',
+          'No se pudo guardar el borrador en este navegador. Conserve esta pantalla e intente nuevamente.',
+          'error'
+        );
+        return;
+      }
       productos = [];
 
       document
@@ -1424,19 +1418,22 @@
             })
           )
         );
+        // Migrate older name-based keys only after the new draft is stored.
+        clavesBorradorPara(puntoVentaActual, fechaActual, categoriaActual)
+          .slice(1).forEach(clave => localStorage.removeItem(clave));
+        return true;
       } catch (error) {
         console.log(
           'No se pudo guardar el borrador.'
         );
+        return false;
       }
     }
 
     function recuperarBorrador() {
       try {
-        const borrador = JSON.parse(
-          localStorage.getItem(
-            obtenerClaveBorrador()
-          ) || '[]'
+        const borrador = leerBorradorPara(
+          puntoVentaActual, fechaActual, categoriaActual
         );
 
         const cantidades = {};
@@ -1484,9 +1481,8 @@
       }
 
       try {
-        localStorage.removeItem(
-          obtenerClaveBorrador()
-        );
+        clavesBorradorPara(puntoVentaActual, fechaActual, categoriaActual)
+          .forEach(clave => localStorage.removeItem(clave));
       } catch (error) {
         console.log(
           'No se pudo eliminar el borrador.'
@@ -1507,14 +1503,36 @@
       fecha,
       categoria
     ) {
-      return (
-        'inventario-mensual-v1-' +
-        puntoVenta +
-        '-' +
-        fecha +
-        '-' +
-        categoria
-      );
+      return 'inventario-mensual-v2-' + JSON.stringify([
+        normalizarTexto(puntoVenta), fecha, normalizarTexto(categoria)
+      ]);
+    }
+
+    function clavesBorradorPara(puntoVenta, fecha, categoria) {
+      const actual = obtenerClaveBorradorPara(puntoVenta, fecha, categoria);
+      const anterior = 'inventario-mensual-v1-' + puntoVenta + '-' + fecha + '-' + categoria;
+      const prefijo = 'inventario-mensual-v1-';
+      const separador = '-' + fecha + '-';
+      const equivalentes = Object.keys(localStorage).filter(clave => {
+        if (!clave.startsWith(prefijo)) return false;
+        const corte = clave.indexOf(separador, prefijo.length);
+        return corte !== -1 &&
+          normalizarTexto(clave.slice(prefijo.length, corte)) === normalizarTexto(puntoVenta) &&
+          normalizarTexto(clave.slice(corte + separador.length)) === normalizarTexto(categoria);
+      }).sort();
+      return [actual, anterior, ...equivalentes.filter(clave => clave !== anterior)];
+    }
+
+    function leerBorradorPara(puntoVenta, fecha, categoria) {
+      for (const clave of clavesBorradorPara(puntoVenta, fecha, categoria)) {
+        const contenido = localStorage.getItem(clave);
+        if (contenido === null) continue;
+        const borrador = JSON.parse(contenido);
+        return Array.isArray(borrador)
+          ? borrador.filter(registro => registro && typeof registro === 'object')
+          : [];
+      }
+      return [];
     }
 
     function mostrarMensaje(
@@ -1567,6 +1585,7 @@
       return String(texto || '')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
         .toLowerCase()
         .trim();
     }
@@ -1579,4 +1598,3 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     }
-  

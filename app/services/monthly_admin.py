@@ -85,8 +85,8 @@ def consolidate(rows):
 
 
 class MonthlyAdminService:
-    def __init__(self, bases, inventory, identity):
-        self.bases, self.inventory, self.identity = bases, inventory, identity
+    def __init__(self, bases, inventory, identity, factors):
+        self.bases, self.inventory, self.identity, self.factors = bases, inventory, identity, factors
 
     def _filters(self, data, require_pdv=True):
         self.identity.require_admin()
@@ -118,7 +118,27 @@ class MonthlyAdminService:
             raise DomainError("La bodega debe tener 4 caracteres. Ejemplo: BR03.")
         if not re.fullmatch(r"\d{1,8}", sequence, re.ASCII):
             raise DomainError("El consecutivo debe contener solamente números y tener máximo 8 dígitos.")
-        return flat_file(self._rows(date, pdv), pdv, warehouse, sequence.zfill(8))
+        rows = self._rows(date, pdv)
+        factors, issues = self.factors.read()
+        problems, converted = {}, []
+        for row in rows:
+            item = item_flat(row[5])
+            problem = issues.get(item)
+            if not problem and item not in factors:
+                problem = "no existe en Base general"
+            if problem:
+                problems[clean(row[5])] = problem
+                continue
+            closed, opened = parse_number(row[8]), parse_number(row[9])
+            if any(not math.isfinite(value) or value < 0 for value in (closed, opened)):
+                raise DomainError(f"El ítem {clean(row[5])} tiene Cerrado o Abierto inválido.")
+            output = list(row)
+            output[10] = closed * factors[item] + opened
+            converted.append(output)
+        if problems:
+            detail = "; ".join(f"{item}: {reason}" for item, reason in problems.items())
+            raise DomainError(f"No se generó el plano Siesa. Revise Base general: {detail}.")
+        return flat_file(converted, pdv, warehouse, sequence.zfill(8))
 
     def csv(self, data):
         date, pdv = self._filters(data, require_pdv=False)

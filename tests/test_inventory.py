@@ -9,7 +9,7 @@ from app.models.text import valid_date
 from app.models.sheets import decode_book, cell_data
 from app.services.monthly_inventory import validate_payload, validate_integrity
 from app.services.monthly_cleanup import partition_counts
-from tests.fakes import ADMIN_LOGIN, payload, sheet
+from tests.fakes import ADMIN_LOGIN, payload, sheet, seed_factors
 from tests.conftest import rpc
 
 
@@ -34,6 +34,7 @@ def test_finalize_exact_rows_and_states(container):
 def test_google_calls_by_user_flow(client,container):
     """Whole flows stay batched; technical OAuth and pagination are excluded."""
     c=container
+    seed_factors(c)
     def count():return c.drive.calls+c.sheets.reads+c.sheets.writes
     def measured(expected,action):
         before=count()
@@ -53,7 +54,7 @@ def test_google_calls_by_user_flow(client,container):
     measured(2,lambda:c.inventory.finalize(payload()))
     measured(1,lambda:c.admin.consolidated(filters))
     measured(2,lambda:c.admin.csv(filters))
-    measured(1,lambda:c.admin.flat(filters))
+    measured(2,lambda:c.admin.flat(filters))  # counts + grouped factors, cached file list
 
 
 def test_distinct_categories_same_sheet(container):
@@ -116,6 +117,7 @@ def test_invalid_dates(date):
 
 
 def test_csv_consolidated_and_flat(container):
+    seed_factors(container)
     data=payload()
     container.inventory.finalize(data)
     filters=dict(fecha=data["fecha"],puntoVenta=data["puntoVenta"],bodega="BR03",consecutivo="897")

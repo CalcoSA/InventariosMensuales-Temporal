@@ -47,9 +47,12 @@ class MonthlyBasesRepository:
             return folders[0]["id"]
         return self.cache.get(("bases-folder",), CACHE_FILE_SECONDS, load)
 
-    def files(self, *, fresh=False):
+    def all_files(self, *, fresh=False):
         loader = lambda: self.drive.list(self.folder(), mime=SHEET_MIME)
         return loader() if fresh else self.cache.get(("pdv-files",), CACHE_PDV_SECONDS, loader)
+
+    def files(self, *, fresh=False):
+        return [file for file in self.all_files(fresh=fresh) if normalize(file["name"]) != "base general"]
 
     def points(self):
         return sorted({f["name"].strip() for f in self.files()}, key=spanish_key)
@@ -57,6 +60,8 @@ class MonthlyBasesRepository:
     def resolve(self, pdv):
         if not isinstance(pdv, str) or not pdv.strip():
             raise DomainError("Seleccione un punto de venta.")
+        if normalize(pdv) == "base general":
+            raise DomainError("Base general es el maestro de factores, no un punto de venta.")
         def load():
             # Name match is deliberately exact as in getFilesByName.
             files = self.drive.list(self.folder(), name=pdv, mime=SHEET_MIME)

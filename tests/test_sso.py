@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, ec
 
 from app import create_app
 from tests.conftest import make_container, rpc
-from tests.fakes import ADMIN_LOGIN, SECOND_ADMIN_LOGIN, TEST_ADMIN_LOGINS, payload as inventory_payload
+from tests.fakes import ADMIN_LOGIN, SECOND_ADMIN_LOGIN, TEST_ADMIN_LOGINS, payload as inventory_payload, seed_factors
 from app.services.session_auth_service import ReplayCache, SessionAuthService
 
 HEADERS = {'X-Monthly-Request': '1', 'Origin': 'http://localhost'}
@@ -381,6 +381,7 @@ def test_frontend_auth_scenarios():
 ])
 def test_signed_login_controls_administration(app,client,token,username,admin,monkeypatch):
     c=app.extensions["monthly"]
+    seed_factors(c)
     monkeypatch.setattr(c.auth,"credentials",lambda:pytest.fail("OAuth is not user identity"))
     c.inventory.finalize(inventory_payload())
     response=client.post("/auth/sso",data={"token":token({"sub":username,"usuario":username})})
@@ -606,6 +607,7 @@ def test_apache_trusts_only_last_proto_port_and_ignores_other_forwarded_headers(
 ])
 def test_apache_signed_identity_inventory_and_admin_permissions(apache_app, token, monkeypatch, username, admin):
     c = apache_app.extensions['monthly']
+    seed_factors(c)
     monkeypatch.setattr(c.auth, 'credentials', lambda: pytest.fail('OAuth is not user identity'))
     client = apache_app.test_client()
     assert client.post('/auth/sso', base_url=APACHE_INTERNAL_URL, headers=APACHE_HEADERS,

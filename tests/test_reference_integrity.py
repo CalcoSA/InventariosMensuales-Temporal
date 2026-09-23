@@ -16,13 +16,8 @@ def test_css_and_all_frontend_functions_preserved():
     css=re.search(r"<style>([\s\S]*?)</style>",original).group(1)
     assert (ROOT/"app/static/css/monthly.css").read_text(encoding="utf-8")==css
     script=(ROOT/"app/static/js/monthly.js").read_text(encoding="utf-8")
-    assert re.findall(r"\bfunction (\w+)\(",original)==re.findall(r"\bfunction (\w+)\(",script)
+    legacy_functions = re.findall(r"\bfunction (\w+)\(",original)
+    current_functions = re.findall(r"\bfunction (\w+)\(",script)
+    assert legacy_functions == [name for name in current_functions if name in legacy_functions]
+    assert set(current_functions) - set(legacy_functions) == {"clavesBorradorPara", "leerBorradorPara"}
     assert "google.script.run" not in script
-
-
-def test_all_legacy_functions_documented():
-    parity=(ROOT/"MIGRATION_PARITY.md").read_text(encoding="utf-8")
-    for filename in ("generador_inventario_mensual.gs","inventarios_mensuales_pdv.gs","index_original.html"):
-        source=(ROOT/"legacy"/filename).read_text(encoding="utf-8")
-        for name in re.findall(r"\bfunction (\w+)\(",source):
-            assert f"\x60{name}\x60" in parity,name

@@ -11,7 +11,7 @@ from app.models.errors import GoogleUnavailable, WriteUncertain
 from app.services.retry import GoogleExecutor
 from tests.test_cache_retry import HttpFailure
 from tests.conftest import make_container
-from tests.fakes import payload
+from tests.fakes import payload, seed_factors
 
 ROOT=Path(__file__).resolve().parent.parent
 
@@ -82,7 +82,7 @@ def test_inventory_draft_progress_search_restore_and_finalize(ui):
     expect(page.locator("#listaEstadosCategorias")).to_contain_text("En proceso")
     assert c.sheets.writes==writes==0
     assert "/api/guardarInventario" not in calls
-    stored=page.evaluate("JSON.parse(localStorage.getItem('inventario-mensual-v1-BR00 - PDV 0-2026-09-18-Bebidas'))")
+    stored=page.evaluate("leerBorradorPara('BR00 - PDV 0','2026-09-18','Bebidas')")
     assert list(stored[0])==["item","cerrado","abierto"]
     page.reload()
     select_category(page)
@@ -90,13 +90,14 @@ def test_inventory_draft_progress_search_restore_and_finalize(ui):
     page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
     expect(page.locator("#textoProgreso")).to_have_text("2 de 2 (100%)")
     page.click("#botonGuardarProceso")
-    expect(page.locator("#listaEstadosCategorias")).to_contain_text("Completada")
+    expect(page.locator("#listaEstadosCategorias")).to_contain_text("En proceso")
     page.select_option("#categoriaInventario","Bebidas");page.click("#botonComenzar")
     expect(page.locator(".producto")).to_have_count(2)
     page.click("#botonFinalizar")
     expect(page.locator("#pantallaExito")).to_be_visible()
     assert c.sheets.writes==1
     assert page.evaluate("localStorage.getItem('inventario-mensual-v1-BR00 - PDV 0-2026-09-18-Bebidas')") is None
+    assert page.evaluate("localStorage.length")==0
     page.click("#botonVolverCategorias")
     expect(page.locator("#categoriaInventario option[value='Bebidas']")).to_be_disabled()
     expect(page.locator("#listaEstadosCategorias")).to_contain_text("Ya guardada")
@@ -161,6 +162,8 @@ def test_unconfirmed_write_preserves_draft_and_never_shows_success(ui):
 
 def test_admin_consolidated_filters_and_downloads(ui):
     page,c,context,calls=ui
+    seed_factors(c)
+    c.cache.clear()
     c.inventory.finalize(payload())
     expect(page.locator("#botonAdministracion")).to_be_visible()
     page.click("#botonAdministracion")

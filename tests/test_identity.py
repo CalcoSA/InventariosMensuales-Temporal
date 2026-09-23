@@ -3,7 +3,7 @@ import pytest
 from app import create_app
 from app.services.identity import IdentityService
 from tests.conftest import make_container, rpc
-from tests.fakes import ADMIN_LOGIN, SECOND_ADMIN_LOGIN, payload
+from tests.fakes import ADMIN_LOGIN, SECOND_ADMIN_LOGIN, payload, seed_factors
 
 ADMIN_METHODS = (
     "obtenerConteoConsolidadoPDV",
@@ -25,6 +25,7 @@ ADMIN_METHODS = (
 ])
 def test_authenticated_identity_authorizes_each_operation(username, allowed, client, container):
     assert client.application.testing
+    seed_factors(container)
     container.inventory.finalize(payload())
     container.identity.provider = lambda: username
     state = rpc(client, "obtenerEstadoAdministrador")

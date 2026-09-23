@@ -57,6 +57,7 @@ def test_expired_session_preserves_and_recovers_monthly_draft(signed_ui,clock,tr
     assert cookie["httpOnly"] and cookie["sameSite"]=="Lax"
     assert "inventario_mensual_session" not in page.evaluate("document.cookie")
     select_category(page)
+    key=page.evaluate("obtenerClaveBorrador()")
     page.fill("#cerrado-0","9")
     page.fill("#abierto-0","1.5")
     if trigger=="timer":
@@ -68,7 +69,6 @@ def test_expired_session_preserves_and_recovers_monthly_draft(signed_ui,clock,tr
         clock.advance(1200)
         page.evaluate("fetch('/api/obtenerPuntosVenta',{method:'POST',headers:{'Content-Type':'application/json'},body:'{\"args\":[]}'}).catch(()=>{})")
     expect(page).to_have_url("http://localhost/auth/expired")
-    key="inventario-mensual-v1-BR00 - PDV 0-2026-09-18-Bebidas"
     saved=page.evaluate("key=>JSON.parse(localStorage.getItem(key))",key)
     assert saved[0]==dict(item="000123",cerrado="9",abierto="1.5")
     assert c.sheets.writes==0

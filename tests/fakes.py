@@ -17,11 +17,22 @@ def sheet(name, rows, sheet_id=0, merged=None):
     def display(value):
         if isinstance(value, datetime):
             return value.strftime("%d/%m/%Y %H:%M:%S")
-        if isinstance(value, float) and value == int(value):
+        if isinstance(value, float) and value.is_integer():
             return str(int(value))
         return str(value)
     return dict(id=sheet_id, name=name, values=deepcopy(rows), display=[[display(v) for v in r] for r in rows],
                 rows=1000, columns=26, merged=merged or [])
+
+
+def seed_factors(container, rows=None):
+    container.drive.files.append(dict(id="factors", name="Base general ", mimeType=SHEET_MIME, parents=["bases"]))
+    container.sheets.books["factors"] = [sheet("Hoja 1", [
+        ["Referencia", "Desc. item", "Desc. U.M.", "Factor U.M.", "U.M."],
+    ] + (rows if rows is not None else [
+        [123, "Jugo", "X 750 ML", 1, "ML"],
+        [2345, "Café", "KG", 1, "KG"],
+        [456, "Queso", "KG", 1, "KG"],
+    ]))]
 
 
 class FakeDrive:
