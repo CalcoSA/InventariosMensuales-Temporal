@@ -11,12 +11,12 @@ Inicie sesión en la intranet y abra **Inventarios Mensuales**. La sesión vence
 3. Consulte el estado de las categorías.
 4. Seleccione una categoría disponible y pulse **Comenzar inventario**.
 5. Ingrese **Cerrado** para cada producto.
-6. Ingrese **Abierto** para cada producto. Se permiten ceros y decimales; no cantidades negativas. La unidad o presentación aparece junto al producto.
+6. Ingrese **Abierto** para cada producto. Use **punto para decimales y coma para miles**: `5.145` significa cinco con 145 milésimas; `5,145` significa cinco mil ciento cuarenta y cinco. También puede escribir los miles sin separador: `5145`. Se permiten ceros y decimales; no cantidades negativas. La unidad o presentación aparece junto al producto.
 7. Pulse **Guardar** si necesita hacer una pausa. Conserva el avance en este navegador, vuelve al menú y deja la categoría **En proceso**, aunque todos los campos estén completos.
 8. Para continuar, seleccione el mismo PDV, fecha y categoría: se recuperarán sus cantidades.
 9. Cuando termine, revise los valores, pulse **Finalizar** y confirme. Espere el mensaje de éxito: registra definitivamente la categoría y elimina su borrador local.
 
-Puede buscar por código, producto o unidad. El indicador de progreso cuenta los productos con ambos campos diligenciados. **Completar vacíos con 0** llena únicamente campos vacíos, previa confirmación: revise que esos ceros correspondan al conteo real.
+Puede buscar por código, producto o unidad. El indicador de progreso cuenta los productos con ambos campos válidos. **Completar vacíos con 0** llena únicamente campos vacíos, previa confirmación: revise que esos ceros correspondan al conteo real. Las comas deben separar grupos de tres dígitos: corrija `2,5` a `2.5` si quiso ingresar dos y medio.
 
 ## Entender los estados
 
@@ -41,6 +41,8 @@ Solo los usuarios autorizados ven **Administración**. Seleccione la fecha y el 
 - **Ver conteo del PDV:** muestra el consolidado por producto, con Cerrado, Abierto y el **Total convertido**, calculado como **(Cerrado × Factor de Base general) + Abierto**. El buscador filtra la tabla; los totales del resumen corresponden al conteo completo.
 - **Descargar CSV:** descarga los registros guardados de la selección. Puede incluir varias filas del mismo producto cuando corresponden a categorías diferentes.
 - **Descargar plano Siesa:** ingrese una bodega de cuatro letras o números y un consecutivo de uno a ocho dígitos. Descarga el archivo para importarlo posteriormente en Siesa.
+
+La consulta y el CSV muestran **punto decimal y coma de miles**, por ejemplo `5,145.25`. El TXT de Siesa usa **punto decimal sin separador de miles**, con ceros y espacios de relleno para conservar las posiciones de sus campos. La presentación no cambia las cantidades numéricas ya guardadas.
 
 El plano Siesa y el total de **Ver conteo del PDV** aplican esta conversión:
 

@@ -19,5 +19,6 @@ def test_css_and_all_frontend_functions_preserved():
     legacy_functions = re.findall(r"\bfunction (\w+)\(",original)
     current_functions = re.findall(r"\bfunction (\w+)\(",script)
     assert legacy_functions == [name for name in current_functions if name in legacy_functions]
-    assert set(current_functions) - set(legacy_functions) == {"clavesBorradorPara", "leerBorradorPara"}
+    assert set(current_functions) - set(legacy_functions) == {
+        "clavesBorradorPara", "leerBorradorPara", "cantidadValida", "validarCantidadesIngresadas"}
     assert "google.script.run" not in script

@@ -1,10 +1,9 @@
 """Factors for converted views and Siesa; never used when saving counts."""
-from decimal import Decimal
 import re
 
 from app.models.errors import DomainError
 from app.models.sheets import find_sheet
-from app.models.text import clean, normalize
+from app.models.text import clean, normalize, parse_decimal
 
 
 def reference_key(value):
@@ -16,10 +15,8 @@ def reference_key(value):
 
 def factor_value(value):
     # Sheets returns effective numeric values (including 2.5), without scaling.
-    # Accept decimal text too, but not guessed thousands separators or units.
-    if isinstance(value, bool) or not re.fullmatch(r"[0-9]+(?:[.,][0-9]+)?", clean(value)):
-        return None
-    number = Decimal(clean(value).replace(",", "."))
+    # Text uses the same explicit separators as counts; no locale guessing.
+    number = parse_decimal(value)
     return number if number.is_finite() and number > 0 else None
 
 

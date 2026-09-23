@@ -4,7 +4,7 @@ import math
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from app.models.errors import DomainError, DuplicateInventory
-from app.models.text import clean, date_key, valid_date, normalize, product_key, spanish_key, js_number
+from app.models.text import clean, date_key, valid_date, normalize, product_key, spanish_key, parse_number, parse_decimal
 from app.repositories.monthly_bases import products_from_book
 
 
@@ -29,10 +29,10 @@ def validate_payload(data):
             value = row[key]
             if isinstance(value, bool) or not isinstance(value, (str, int, float)):
                 raise DomainError(f"La cantidad {label} del ítem {row['item']} no es válida.")
-            number = js_number(clean(value).replace(",", ".", 1))
+            number = parse_number(value)
             if not math.isfinite(number) or number < 0:
-                raise DomainError(f"La cantidad {label} del ítem {row['item']} no es válida.")
-        total = sum(js_number(clean(row[k]).replace(",", ".", 1)) for k in ("cerrado", "abierto"))
+                raise DomainError(f"La cantidad {label} del ítem {row['item']} no es válida. Use punto para decimales y coma para miles (ejemplo: 1,234.5), sin cantidades negativas.")
+        total = sum(parse_number(row[k]) for k in ("cerrado", "abierto"))
         if not math.isfinite(total):
             raise DomainError(f"La cantidad total del ítem {row['item']} no es válida.")
 
@@ -88,8 +88,8 @@ class MonthlyInventoryService:
             record_id, timestamp = str(uuid4()), self.now()
             rows = []
             for row in data["conteos"]:
-                closed, opened = [js_number(clean(row[k]).replace(",", ".", 1)) for k in ("cerrado", "abierto")]
+                closed, opened = [parse_decimal(row[k]) for k in ("cerrado", "abierto")]
                 rows.append([record_id, timestamp, data["fecha"], data["puntoVenta"], data["categoria"],
-                             row["item"], row["producto"], row["udm"], closed, opened, closed + opened])
+                             row["item"], row["producto"], row["udm"], float(closed), float(opened), float(closed + opened)])
             self.inventory.append(spreadsheet_id, book, rows)
         return dict(correcto=True, mensaje="Inventario mensual guardado correctamente.", registros=len(rows))

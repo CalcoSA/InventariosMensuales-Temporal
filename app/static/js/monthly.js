@@ -378,7 +378,7 @@
 
     function formatearNumeroConteo(valor) {
       return new Intl.NumberFormat(
-        'es-CO',
+        'en-US',
         { maximumFractionDigits: 6 }
       ).format(Number(valor) || 0);
     }
@@ -389,6 +389,36 @@
       return partes.length === 3
         ? partes[2] + '/' + partes[1] + '/' + partes[0]
         : fecha;
+    }
+
+    function cantidadValida(valor) {
+      if (typeof valor !== 'string' && typeof valor !== 'number') {
+        return false;
+      }
+      const texto = String(valor).trim();
+      const formato = /^[+-]?(?:(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+      const numero = Number(texto.replace(/,/g, ''));
+      return formato.test(texto) && Number.isFinite(numero) && numero >= 0;
+    }
+
+    function validarCantidadesIngresadas() {
+      for (let indice = 0; indice < productos.length; indice++) {
+        const producto = productos[indice];
+        for (const campo of ['cerrado', 'abierto']) {
+          if (producto[campo] !== '' && !cantidadValida(producto[campo])) {
+            mostrarMensaje(
+              'mensajeInventario',
+              'Revise ' + campo + ' del ítem ' + producto.item +
+                '. Use punto para decimales y coma para miles (ejemplo: 1,234.5), sin cantidades negativas.',
+              'error'
+            );
+            const entrada = document.getElementById(campo + '-' + indice);
+            if (entrada) entrada.focus();
+            return false;
+          }
+        }
+      }
+      return true;
     }
 
     function descargarConteosMensuales() {
@@ -946,10 +976,10 @@
 
                   <input
                     id="cerrado-${indice}"
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="text"
+                    lang="en"
                     inputmode="decimal"
+                    aria-describedby="ayudaCantidades"
                     value="${escaparHTML(producto.cerrado)}"
                     data-oninput="registrarCantidad(
                       ${indice},
@@ -967,10 +997,10 @@
 
                   <input
                     id="abierto-${indice}"
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="text"
+                    lang="en"
                     inputmode="decimal"
+                    aria-describedby="ayudaCantidades"
                     value="${escaparHTML(producto.abierto)}"
                     data-oninput="registrarCantidad(
                       ${indice},
@@ -1028,8 +1058,8 @@
       const completados =
         productos.filter(function (producto) {
           return (
-            producto.cerrado !== '' &&
-            producto.abierto !== ''
+            cantidadValida(producto.cerrado) &&
+            cantidadValida(producto.abierto)
           );
         }).length;
 
@@ -1107,6 +1137,10 @@
 
       ocultarMensaje('mensajeInventario');
 
+      if (!validarCantidadesIngresadas()) {
+        return;
+      }
+
       const hayAvance = productos.some(
         producto =>
           producto.cerrado !== '' ||
@@ -1171,6 +1205,10 @@
       }
 
       ocultarMensaje('mensajeInventario');
+
+      if (!validarCantidadesIngresadas()) {
+        return;
+      }
 
       const pendientes =
         productos.filter(function (producto) {

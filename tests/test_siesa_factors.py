@@ -23,7 +23,8 @@ def lines(result):
 
 @pytest.mark.parametrize("closed,factor,opened,total", [
     (2, 24, 5, 53), (0, 24, 5, 5), (2, 24, 0, 48), (1, 1, 3, 4),
-    (1, 12, 3, 15), (2, 2.5, 3, 8), (1.5, "24", 0.5, 36.5), (2, "2,5", 0, 5),
+    (1, 12, 3, 15), (2, 2.5, 3, 8), (1.5, "24", 0.5, 36.5), (2, "2.5", 0, 5),
+    (2, "2,500", 0, 5000), (2, "2.500", 0, 5),
     (2, 375, 0.3, 750.3), (17, 1, 0.8, 17.8), (0.1, 3, 0.2, 0.5),
 ])
 def test_factor_converts_export_and_view_without_changing_storage_or_csv(container, closed, factor, opened, total):
@@ -33,7 +34,7 @@ def test_factor_converts_export_and_view_without_changing_storage_or_csv(contain
     data["conteos"][0].update(cerrado=closed, abierto=opened)
     container.inventory.finalize(data)
     rows = container.sheets.books["pdv-0"][1]["values"][1:]
-    assert rows[0][8:] == [closed, opened, closed + opened]
+    assert rows[0][8:] == [closed, opened, float(Decimal(str(closed)) + Decimal(str(opened)))]
     before = deepcopy(container.sheets.books)
     csv_before = container.admin.csv(FILTERS)
     consolidated_before = container.admin.consolidated(FILTERS)
@@ -66,7 +67,7 @@ def test_historical_total_is_not_used_or_rewritten(container):
     assert container.sheets.books["pdv-0"][1]["values"][1][10] == 999
 
 
-@pytest.mark.parametrize("factor", ["", None, "abc", "24 unidades", "1,2,3", 0, -1, True, float("nan"), float("inf")])
+@pytest.mark.parametrize("factor", ["", None, "abc", "24 unidades", "1,2,3", "2,5", "1.234,56", 0, -1, True, float("nan"), float("inf")])
 @pytest.mark.parametrize("method", ["generarPlanoSiesaMensual", "obtenerConteoConsolidadoPDV"])
 def test_invalid_factor_blocks_complete_result_with_item_list(container, client, factor, method):
     seed_factors(container, [[123, "P", "", factor]])

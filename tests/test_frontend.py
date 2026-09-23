@@ -180,7 +180,7 @@ def test_admin_consolidated_filters_and_downloads(ui):
     expect(page.locator("#resumenCerrado")).to_have_text("8")
     expect(page.locator("#resumenAbierto")).to_have_text("5")
     expect(page.locator("#resumenTotal")).to_have_text("105")
-    expect(page.locator("#cuerpoConteoConsolidado tr").first.locator("td").last).to_have_text("98,5")
+    expect(page.locator("#cuerpoConteoConsolidado tr").first.locator("td").last).to_have_text("98.5")
     assert c.sheets.books["pdv-0"][1]["values"][1][10] == 6.5
     page.fill("#buscadorConteo","cafe")
     expect(page.locator("#cuerpoConteoConsolidado tr")).to_have_count(1)
@@ -194,19 +194,23 @@ def test_admin_consolidated_filters_and_downloads(ui):
 
 
 @pytest.mark.parametrize("width,height",[(1280,1000),(390,844)])
-def test_original_visual_parity(ui,width,height):
+def test_original_visual_parity_except_quantity_controls(ui,width,height):
     page,c,context,calls=ui
     page.set_viewport_size({"width":width,"height":height})
     select_category(page)
     page.locator("#buscador").blur()
-    migrated=page.screenshot(full_page=True,animations="disabled")
+    expect(page.locator("#ayudaCantidades")).to_contain_text("1,234.5")
+    # Quantity controls now accept grouping commas instead of native spin buttons.
+    # Their behavior is tested above/below; compare the rest of the original UI.
+    migrated=page.screenshot(full_page=True,animations="disabled",mask=[page.locator(".cantidad input")],
+                             style="#ayudaCantidades { display: none; }")
     original=context.new_page()
     original.set_viewport_size({"width":width,"height":height})
     original.goto("http://localhost/original")
     expect(original.locator("#puntoVenta option")).to_have_count(2)
     select_category(original)
     original.locator("#buscador").blur()
-    baseline=original.screenshot(full_page=True,animations="disabled")
+    baseline=original.screenshot(full_page=True,animations="disabled",mask=[original.locator(".cantidad input")])
     # Exact rendered-pixel comparison; PNG byte identity in the same browser engine.
     assert migrated==baseline
     original.close()
@@ -233,3 +237,57 @@ def test_admin_status_error_keeps_button_hidden(ui):
         page.reload()
     assert response.value.status==503
     expect(page.locator("#botonAdministracion")).to_be_hidden()
+
+
+def test_decimal_point_and_thousands_comma_in_spanish_browser(ui):
+    page,c,context,calls=ui
+    seed_factors(c)
+    c.cache.clear()
+    select_category(page)
+    page.fill("#cerrado-0", "1")
+    page.fill("#abierto-0", "5.145")
+    page.fill("#cerrado-1", "1")
+    page.fill("#abierto-1", "5,145")
+    expect(page.locator("#textoProgreso")).to_have_text("2 de 2 (100%)")
+    page.click("#botonGuardarProceso")
+    expect(page.locator("#listaEstadosCategorias")).to_contain_text("En proceso")
+    assert c.sheets.writes == 0
+    page.reload()
+    select_category(page)
+    assert page.input_value("#abierto-0") == "5.145"
+    assert page.input_value("#abierto-1") == "5,145"
+    page.click("#botonFinalizar")
+    expect(page.locator("#pantallaExito")).to_be_visible()
+    assert [r[8:11] for r in c.sheets.books["pdv-0"][1]["values"][1:]] == [[1, 5.145, 6.145], [1, 5145, 5146]]
+    page.click("#botonAdministracion")
+    page.fill("#adminFecha", "2026-09-18")
+    page.select_option("#adminPuntoVenta", "BR00 - PDV 0")
+    page.fill("#adminBodega", "BR03")
+    page.fill("#adminConsecutivo", "897")
+    with page.expect_download() as download:
+        page.click("#botonDescargarPlano")
+    detail = Path(download.value.path()).read_bytes().decode("ascii").split("\r\n")[1:-1]
+    assert all(len(line) == 333 and "," not in line for line in detail)
+    assert [line[148:180] for line in detail] == ["000000000000006.145000000000000.", "000000000005146.000000000000000."]
+    page.click("#botonVerConteo")
+    expect(page.locator("#pantallaConsolidado")).to_be_visible()
+    rows = page.locator("#cuerpoConteoConsolidado tr")
+    expect(rows.nth(0).locator("td").last).to_have_text("6.145")
+    expect(rows.nth(1).locator("td").last).to_have_text("5,146")
+    expect(page.locator("#resumenAbierto")).to_have_text("5,150.145")
+    expect(page.locator("#resumenTotal")).to_have_text("5,152.145")
+
+
+@pytest.mark.parametrize("value", ["2,5", "1.234,56", "12,34", "1 234", "-1"])
+def test_invalid_number_format_never_saves_or_finalizes(ui, value):
+    page,c,context,calls=ui
+    select_category(page)
+    page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
+    page.fill("#abierto-0", value)
+    expect(page.locator("#textoProgreso")).to_have_text("1 de 2 (50%)")
+    for button in ("#botonGuardarProceso", "#botonFinalizar"):
+        page.click(button)
+        expect(page.locator("#mensajeInventario")).to_contain_text("Use punto para decimales y coma para miles")
+        expect(page.locator("#pantallaInventario")).to_be_visible()
+        assert page.input_value("#abierto-0") == value
+    assert c.sheets.writes == 0 and "/api/guardarInventario" not in calls

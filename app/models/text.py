@@ -90,27 +90,18 @@ def js_number(value):
 
 
 def parse_number(value):
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    text = re.sub(r"\s", "", clean(value))
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".", 1) if text.rfind(",") > text.rfind(".") else text.replace(",", "")
-    elif "," in text:
-        text = text.replace(",", ".", 1)
-    return js_number(text)
+    return float(parse_decimal(value))
 
 
 def parse_decimal(value):
-    """Read a decimal quantity without a binary-float round trip."""
-    text = re.sub(r"\s", "", clean(value))
-    if "," in text and "." in text:
-        text = text.replace(".", "").replace(",", ".", 1) if text.rfind(",") > text.rfind(".") else text.replace(",", "")
-    elif "," in text:
-        text = text.replace(",", ".", 1)
-    if not re.fullmatch(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?", text, re.ASCII):
+    """Point is decimal; commas must group thousands. Never infer a locale."""
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return Decimal("NaN")
+    text = clean(value)
+    if not re.fullmatch(r"[+-]?(?:(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", text):
         return Decimal("NaN")
     try:
-        return Decimal(text)
+        return Decimal(text.replace(",", ""))
     except InvalidOperation:
         return Decimal("NaN")
 

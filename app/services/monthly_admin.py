@@ -44,6 +44,14 @@ def csv_field(value):
     return '"' + clean(value).replace('"', '""') + '"' if value is None else '"' + str(value).replace('"', '""') + '"'
 
 
+def quantity_csv(value, item):
+    number = parse_decimal(value)
+    if not number.is_finite() or number < 0:
+        raise DomainError(f"El ítem {item} tiene una cantidad inválida para el CSV.")
+    text = format(number, ",f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 def download(name, mime, content, count, **extra):
     return dict(nombre=name, tipo=mime, contenidoBase64=base64.b64encode(content.encode("utf-8")).decode("ascii"), registros=count, **extra)
 
@@ -157,9 +165,13 @@ class MonthlyAdminService:
         for file in self.bases.files(fresh=True):
             if pdv and normalize(file["name"]) != normalize(pdv):
                 continue
-            for row in self.inventory.counts(self.inventory.read_view(file["id"]), display=True):
+            book = self.inventory.read_view(file["id"])
+            # Keep displayed dates/catalog labels, but never parse quantities
+            # from locale-dependent Sheets formatting.
+            for row, raw in zip(self.inventory.counts(book, display=True), self.inventory.counts(book)):
                 if date_key(row[2]) == date:
-                    records.append([row[2], row[3], row[4], item_siesa(row[5]), *row[6:11]])
+                    quantities = [quantity_csv(value, row[5]) for value in raw[8:11]]
+                    records.append([row[2], row[3], row[4], item_siesa(row[5]), *row[6:8], *quantities])
         if not records:
             raise DomainError("No se encontraron conteos mensuales para la fecha y el PDV seleccionados.")
         records.sort(key=lambda r: (spanish_key(r[1]), spanish_key(r[2]), spanish_key(r[3])))

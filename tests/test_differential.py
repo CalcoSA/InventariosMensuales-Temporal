@@ -38,12 +38,13 @@ FUNCTIONS = [
     ("web", "nombreArchivoSeguro_", t.safe_filename, [["Árbol / Ñandú"], ["-- a.b --"]]),
     ("web", "formatearItemSiesa_", a.item_siesa, [["123"], ["000123"], ["123.0"], ["ABC"], [123]]),
     ("web", "formatearItemPlanoSiesa_", a.item_flat, [["123"], ["123.00"], ["00012345678"]]),
-    ("web", "convertirNumeroPlanoSiesa_", t.parse_number, [["1.234,5"], ["1,234.5"], [" 1 234,25 "], [0], [""]]),
+    # Locale guessing is intentionally removed; keep parity for unambiguous values.
+    ("web", "convertirNumeroPlanoSiesa_", t.parse_number, [["1234.5"], ["1,234.5"], [0]]),
     ("web", "nombrePDVPlanoSiesa_", a.pdv_flat, [["BR03 - Río Norte"], ["BH1–Heladería"], ["BC1 - Cocina"], [""]]),
     ("web", "redondearConteoMensual_", t.rounded_count, [[0.1+0.2], [2.12345678], [0.0000005], [-0.0000005]]),
     # Keep parity for exactly representable amounts; decimal artifacts are
     # intentionally corrected and covered independently in test_siesa_precision.
-    ("web", "formatearCantidadPlanoSiesa_", a.quantity_flat, [[v,"00000000123"] for v in [0, 0.5, 2.5, 123456789.125, "1.234,5", 999999999999999]]),
+    ("web", "formatearCantidadPlanoSiesa_", a.quantity_flat, [[v,"00000000123"] for v in [0, 0.5, 2.5, 123456789.125, "1,234.5", 999999999999999]]),
     ("web", "escaparCampoCSV_", a.csv_field, [[' café;"'], [None], [0], [" x \n y "]]),
     ("web", "buscarIndiceMensual_", find_index, [[["x","codigo","item"],["item","codigo"]], [["x"],["categoria"]]]),
 ]
