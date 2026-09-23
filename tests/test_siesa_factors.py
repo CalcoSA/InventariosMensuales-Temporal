@@ -1,6 +1,7 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from decimal import Decimal
 from threading import Barrier
 
 import pytest
@@ -23,8 +24,9 @@ def lines(result):
 @pytest.mark.parametrize("closed,factor,opened,total", [
     (2, 24, 5, 53), (0, 24, 5, 5), (2, 24, 0, 48), (1, 1, 3, 4),
     (1, 12, 3, 15), (2, 2.5, 3, 8), (1.5, "24", 0.5, 36.5), (2, "2,5", 0, 5),
+    (2, 375, 0.3, 750.3), (17, 1, 0.8, 17.8), (0.1, 3, 0.2, 0.5),
 ])
-def test_siesa_factor_only_changes_output_quantity(container, closed, factor, opened, total):
+def test_factor_converts_export_and_view_without_changing_storage_or_csv(container, closed, factor, opened, total):
     seed_factors(container, [[123, "Nombre distinto", "Otra presentación", factor, "OTRA"],
                              [2345, "Café", "KG", 1, "KG"]])
     data = payload()
@@ -35,13 +37,14 @@ def test_siesa_factor_only_changes_output_quantity(container, closed, factor, op
     before = deepcopy(container.sheets.books)
     csv_before = container.admin.csv(FILTERS)
     consolidated_before = container.admin.consolidated(FILTERS)
+    assert consolidated_before["registros"][0]["total"] == total
     original = flat_file(rows, FILTERS["puntoVenta"], "BR03", "00000897")
     result = container.admin.flat(FILTERS)
     old, new = lines(original), lines(result)
     assert new[0] == "000000100000001009"
     assert new[-1] == "000000499990001009"
     assert all(len(line) == 333 for line in new[1:-1])
-    assert new[1][148:180] == f"{total:031.15f}."
+    assert new[1][148:180] == f"{Decimal(str(total)):031.15f}."
     assert new[1][:148] == old[1][:148] and new[1][180:] == old[1][180:]
     assert new[2:] == old[2:]
     assert {k:v for k,v in result.items() if k != "contenidoBase64"} == {
@@ -59,15 +62,17 @@ def test_historical_total_is_not_used_or_rewritten(container):
     before = deepcopy(container.sheets.books)
     assert lines(container.admin.flat(FILTERS))[1][148:180] == "000000000000098.500000000000000."
     assert container.sheets.books == before
-    assert container.admin.consolidated(FILTERS)["registros"][0]["total"] == 999
+    assert container.admin.consolidated(FILTERS)["registros"][0]["total"] == 98.5
+    assert container.sheets.books["pdv-0"][1]["values"][1][10] == 999
 
 
 @pytest.mark.parametrize("factor", ["", None, "abc", "24 unidades", "1,2,3", 0, -1, True, float("nan"), float("inf")])
-def test_invalid_factor_blocks_complete_export_with_item_list(container, client, factor):
+@pytest.mark.parametrize("method", ["generarPlanoSiesaMensual", "obtenerConteoConsolidadoPDV"])
+def test_invalid_factor_blocks_complete_result_with_item_list(container, client, factor, method):
     seed_factors(container, [[123, "P", "", factor]])
     container.inventory.finalize(payload())
     before = deepcopy(container.sheets.books)
-    response = rpc(client, "generarPlanoSiesaMensual", FILTERS)
+    response = rpc(client, method, FILTERS)
     assert response.status_code == 400
     assert "000123" in response.text and "002345" in response.text
     assert "Base general" in response.text and "contenidoBase64" not in response.text
@@ -145,7 +150,8 @@ def test_grouped_factors_refresh_between_exports(container):
 
 
 @pytest.mark.parametrize("users", [10,20,36,40])
-def test_concurrent_siesa_exports_share_reads(tmp_path, users):
+@pytest.mark.parametrize("method", ["flat", "consolidated"])
+def test_concurrent_converted_results_share_reads(tmp_path, users, method):
     c = make_container(tmp_path, delay=.05)
     seed_factors(c)
     c.inventory.finalize(payload())
@@ -154,7 +160,7 @@ def test_concurrent_siesa_exports_share_reads(tmp_path, users):
     gate = Barrier(users)
     def export(_):
         gate.wait()
-        return c.admin.flat(FILTERS)
+        return getattr(c.admin, method)(FILTERS)
     with ThreadPoolExecutor(users) as pool:
         results = list(pool.map(export, range(users)))
     assert all(result == results[0] for result in results)

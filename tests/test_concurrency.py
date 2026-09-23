@@ -4,7 +4,7 @@ from time import perf_counter
 import pytest
 from app.models.errors import DuplicateInventory
 from tests.conftest import make_container
-from tests.fakes import payload, sheet
+from tests.fakes import payload, sheet, seed_factors
 from app.constants import COUNTS_HEADERS
 
 RESULTS=[]
@@ -26,7 +26,9 @@ def test_load(users,flow,tmp_path):
         data["conteos"]=[dict(item=f"{i:06}",producto=f"Producto {i}",udm="KG",cerrado="4",abierto="2.5")
                          for i in range(1,41)]
         return data
-    if flow=="admin":c.inventory.finalize(payload())
+    if flow=="admin":
+        seed_factors(c)
+        c.inventory.finalize(payload())
     before=c.drive.calls+c.sheets.reads+c.sheets.writes
     reads_before,writes_before=c.sheets.reads,c.sheets.writes
     c.locks.max_wait=0.0

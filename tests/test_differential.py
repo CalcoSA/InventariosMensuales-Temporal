@@ -41,7 +41,9 @@ FUNCTIONS = [
     ("web", "convertirNumeroPlanoSiesa_", t.parse_number, [["1.234,5"], ["1,234.5"], [" 1 234,25 "], [0], [""]]),
     ("web", "nombrePDVPlanoSiesa_", a.pdv_flat, [["BR03 - Río Norte"], ["BH1–Heladería"], ["BC1 - Cocina"], [""]]),
     ("web", "redondearConteoMensual_", t.rounded_count, [[0.1+0.2], [2.12345678], [0.0000005], [-0.0000005]]),
-    ("web", "formatearCantidadPlanoSiesa_", a.quantity_flat, [[v,"00000000123"] for v in [0, 0.1, 1.005, 2.5, 123456789.125, "1.234,56", 0.000000000000001, 999999999999999]]),
+    # Keep parity for exactly representable amounts; decimal artifacts are
+    # intentionally corrected and covered independently in test_siesa_precision.
+    ("web", "formatearCantidadPlanoSiesa_", a.quantity_flat, [[v,"00000000123"] for v in [0, 0.5, 2.5, 123456789.125, "1.234,5", 999999999999999]]),
     ("web", "escaparCampoCSV_", a.csv_field, [[' café;"'], [None], [0], [" x \n y "]]),
     ("web", "buscarIndiceMensual_", find_index, [[["x","codigo","item"],["item","codigo"]], [["x"],["categoria"]]]),
 ]
@@ -165,9 +167,9 @@ def test_header_scan_priority_and_limits():
     assert [g.detect_columns(r) for r in cases]==[x["result"] for x in expected]
 
 
-def test_generated_siesa_decimal_cases():
+def test_generated_siesa_binary_exact_cases_keep_legacy_format():
     import random
     rng=random.Random(20260918)
-    values=[rng.randrange(10**12)/10**rng.randrange(0,12) for _ in range(100)]+[-0.0,0.0000000000000005,9.999999999999999]
+    values=[rng.randrange(10**6)/2**rng.randrange(0,8) for _ in range(100)]+[-0.0]
     expected=oracle([dict(project="web",function="formatearCantidadPlanoSiesa_",args=[v,"1"]) for v in values])
     assert [a.quantity_flat(v,"1") for v in values]==[x["result"] for x in expected]

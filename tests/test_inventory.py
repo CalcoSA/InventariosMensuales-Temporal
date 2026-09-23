@@ -52,7 +52,7 @@ def test_google_calls_by_user_flow(client,container):
     measured(0,lambda:c.inventory.products(pdv,"Cocina"))
     measured(1,lambda:c.inventory.states(pdv,"2026-09-18"))
     measured(2,lambda:c.inventory.finalize(payload()))
-    measured(1,lambda:c.admin.consolidated(filters))
+    measured(2,lambda:c.admin.consolidated(filters))  # counts + grouped factors
     measured(2,lambda:c.admin.csv(filters))
     measured(2,lambda:c.admin.flat(filters))  # counts + grouped factors, cached file list
 

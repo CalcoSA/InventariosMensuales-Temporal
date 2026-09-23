@@ -1,8 +1,9 @@
 import base64
 import math
 import re
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from app.models.errors import DomainError
-from app.models.text import clean, date_key, valid_date, normalize, safe_filename, parse_number, js_fixed, rounded_count, spanish_key
+from app.models.text import clean, date_key, valid_date, normalize, safe_filename, parse_number, parse_decimal, rounded_count, spanish_key
 
 
 def item_siesa(value):
@@ -18,12 +19,17 @@ def item_flat(value):
 
 
 def quantity_flat(value, item):
-    number = parse_number(value)
-    if not math.isfinite(number) or number < 0:
+    number = parse_decimal(value)
+    if not number.is_finite() or number < 0:
         raise DomainError(f"La cantidad total del ítem {item} no es válida.")
-    if number >= 1e15:
+    if number >= Decimal("1e15"):
         raise DomainError(f"La cantidad del ítem {item} supera el tamaño permitido por Siesa.")
-    integer, decimal = js_fixed(number, 15).split(".")
+    # Keep the existing 32-character slot and its padding. Quantize the decimal
+    # value, not the exact binary64 expansion produced by JavaScript toFixed.
+    with localcontext() as context:
+        context.prec = 50
+        number = number.quantize(Decimal("0.000000000000001"), rounding=ROUND_HALF_UP)
+    integer, decimal = format(number.copy_abs(), ".15f").split(".")
     if len(integer) > 15:
         raise DomainError(f"La cantidad del ítem {item} supera el tamaño permitido por Siesa.")
     zeros = "000000000000000." * 2
@@ -109,7 +115,7 @@ class MonthlyAdminService:
 
     def consolidated(self, data):
         date, pdv = self._filters(data)
-        return dict(puntoVenta=pdv, fecha=date, registros=consolidate(self._rows(date, pdv)))
+        return dict(puntoVenta=pdv, fecha=date, registros=consolidate(self._converted_rows(date, pdv)))
 
     def flat(self, data):
         date, pdv = self._filters(data)
@@ -118,6 +124,9 @@ class MonthlyAdminService:
             raise DomainError("La bodega debe tener 4 caracteres. Ejemplo: BR03.")
         if not re.fullmatch(r"\d{1,8}", sequence, re.ASCII):
             raise DomainError("El consecutivo debe contener solamente números y tener máximo 8 dígitos.")
+        return flat_file(self._converted_rows(date, pdv), pdv, warehouse, sequence.zfill(8))
+
+    def _converted_rows(self, date, pdv):
         rows = self._rows(date, pdv)
         factors, issues = self.factors.read()
         problems, converted = {}, []
@@ -129,16 +138,18 @@ class MonthlyAdminService:
             if problem:
                 problems[clean(row[5])] = problem
                 continue
-            closed, opened = parse_number(row[8]), parse_number(row[9])
-            if any(not math.isfinite(value) or value < 0 for value in (closed, opened)):
+            closed, opened = parse_decimal(row[8]), parse_decimal(row[9])
+            if any(not value.is_finite() or value < 0 for value in (closed, opened)):
                 raise DomainError(f"El ítem {clean(row[5])} tiene Cerrado o Abierto inválido.")
             output = list(row)
-            output[10] = closed * factors[item] + opened
+            with localcontext() as context:
+                context.prec = 50
+                output[10] = closed * factors[item] + opened
             converted.append(output)
         if problems:
             detail = "; ".join(f"{item}: {reason}" for item, reason in problems.items())
-            raise DomainError(f"No se generó el plano Siesa. Revise Base general: {detail}.")
-        return flat_file(converted, pdv, warehouse, sequence.zfill(8))
+            raise DomainError(f"No se pudo calcular el total convertido. Revise Base general: {detail}.")
+        return converted
 
     def csv(self, data):
         date, pdv = self._filters(data, require_pdv=False)

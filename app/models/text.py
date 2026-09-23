@@ -6,7 +6,7 @@ import re
 import sys
 import unicodedata
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP, localcontext
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from functools import lru_cache
 from threading import RLock
 from app.models.errors import ConfigurationError, DomainError
@@ -98,6 +98,21 @@ def parse_number(value):
     elif "," in text:
         text = text.replace(",", ".", 1)
     return js_number(text)
+
+
+def parse_decimal(value):
+    """Read a decimal quantity without a binary-float round trip."""
+    text = re.sub(r"\s", "", clean(value))
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".", 1) if text.rfind(",") > text.rfind(".") else text.replace(",", "")
+    elif "," in text:
+        text = text.replace(",", ".", 1)
+    if not re.fullmatch(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?", text, re.ASCII):
+        return Decimal("NaN")
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return Decimal("NaN")
 
 
 def js_fixed(value, digits=15):

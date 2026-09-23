@@ -162,7 +162,7 @@ def test_unconfirmed_write_preserves_draft_and_never_shows_success(ui):
 
 def test_admin_consolidated_filters_and_downloads(ui):
     page,c,context,calls=ui
-    seed_factors(c)
+    seed_factors(c, [[123,"Jugo","ML",24], [2345,"Café","KG",1]])
     c.cache.clear()
     c.inventory.finalize(payload())
     expect(page.locator("#botonAdministracion")).to_be_visible()
@@ -177,8 +177,14 @@ def test_admin_consolidated_filters_and_downloads(ui):
     page.click("#botonVerConteo")
     expect(page.locator("#pantallaConsolidado")).to_be_visible()
     expect(page.locator("#resumenProductos")).to_have_text("2")
+    expect(page.locator("#resumenCerrado")).to_have_text("8")
+    expect(page.locator("#resumenAbierto")).to_have_text("5")
+    expect(page.locator("#resumenTotal")).to_have_text("105")
+    expect(page.locator("#cuerpoConteoConsolidado tr").first.locator("td").last).to_have_text("98,5")
+    assert c.sheets.books["pdv-0"][1]["values"][1][10] == 6.5
     page.fill("#buscadorConteo","cafe")
     expect(page.locator("#cuerpoConteoConsolidado tr")).to_have_count(1)
+    expect(page.locator("#resumenTotal")).to_have_text("105")
     with page.expect_download() as download:
         page.click("#botonDescargarConteos")
     assert download.value.suggested_filename.endswith(".csv")

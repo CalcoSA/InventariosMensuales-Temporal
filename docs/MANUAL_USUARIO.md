@@ -38,17 +38,19 @@ Cada borrador corresponde a un PDV, fecha y categoría. Cambiar de selección no
 
 Solo los usuarios autorizados ven **Administración**. Seleccione la fecha y el PDV que desea consultar.
 
-- **Ver conteo:** muestra el consolidado por producto, con Cerrado, Abierto y Total. El buscador filtra la tabla; los totales del resumen corresponden al conteo completo.
+- **Ver conteo del PDV:** muestra el consolidado por producto, con Cerrado, Abierto y el **Total convertido**, calculado como **(Cerrado × Factor de Base general) + Abierto**. El buscador filtra la tabla; los totales del resumen corresponden al conteo completo.
 - **Descargar CSV:** descarga los registros guardados de la selección. Puede incluir varias filas del mismo producto cuando corresponden a categorías diferentes.
 - **Descargar plano Siesa:** ingrese una bodega de cuatro letras o números y un consecutivo de uno a ocho dígitos. Descarga el archivo para importarlo posteriormente en Siesa.
 
-El plano aplica exclusivamente esta conversión:
+El plano Siesa y el total de **Ver conteo del PDV** aplican esta conversión:
 
 **Cantidad Siesa = (Cerrado × Factor de Base general) + Abierto**
 
 Ejemplo: Cerrado **2**, Factor **24**, Abierto **5** → cantidad Siesa **53**.
 
-**Base general** es la fuente oficial del factor. Esta conversión solo afecta la cantidad del plano Siesa: no modifica los totales del inventario normal, el CSV, el consolidado ni los históricos. Descargar el archivo no lo importa automáticamente en Siesa.
+**Base general** es la fuente oficial del factor. La conversión se calcula al consultar o descargar, incluso para conteos guardados antes del cambio. No modifica los registros originales ni los históricos; el CSV conserva el total original **Cerrado + Abierto**. Descargar el archivo no lo importa automáticamente en Siesa.
+
+Para volver a generar un plano, seleccione la misma fecha y PDV y descárguelo nuevamente. No recorte sus decimales ni espacios: forman parte del formato del archivo.
 
 La **generación y preparación de bases** y la **limpieza de conteos** son tareas de soporte, sin botones en esta pantalla. La limpieza puede retirar registros de más de cinco días; coordine con soporte la conservación de la información necesaria.
 
@@ -59,4 +61,4 @@ La **generación y preparación de bases** y la **limpieza de conteos** son tare
 - **La sesión expiró:** vuelva a ingresar desde la intranet y seleccione el mismo PDV, fecha y categoría para retomar.
 - **Finalizar indica campos pendientes:** diligencie Cerrado y Abierto de todos los productos. Use cero cuando corresponda.
 - **Finalizar no confirma el guardado:** conserve el borrador y revise el estado antes de reenviar. Si aparece Ya guardada, el registro ya existe. Si cambió el catálogo o persiste el error, contacte a soporte.
-- **Siesa informa un factor faltante, inválido o contradictorio:** entregue a soporte la lista de ítems del mensaje para corregir Base general y vuelva a intentar. El sistema bloquea el plano; no reemplaza factores faltantes por 1.
+- **La consulta o el plano informa un factor faltante, inválido o contradictorio:** entregue a soporte la lista de ítems del mensaje para corregir Base general y vuelva a intentar. El sistema no reemplaza factores faltantes por 1.

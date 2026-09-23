@@ -1,5 +1,5 @@
-"""Official Siesa factors from Base general; never used when saving counts."""
-import math
+"""Factors for converted views and Siesa; never used when saving counts."""
+from decimal import Decimal
 import re
 
 from app.models.errors import DomainError
@@ -19,8 +19,8 @@ def factor_value(value):
     # Accept decimal text too, but not guessed thousands separators or units.
     if isinstance(value, bool) or not re.fullmatch(r"[0-9]+(?:[.,][0-9]+)?", clean(value)):
         return None
-    number = float(clean(value).replace(",", "."))
-    return number if math.isfinite(number) and number > 0 else None
+    number = Decimal(clean(value).replace(",", "."))
+    return number if number.is_finite() and number > 0 else None
 
 
 def factors_from_book(book):
