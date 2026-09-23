@@ -11,7 +11,7 @@ Inicie sesión en la intranet y abra **Inventarios Mensuales**. La sesión vence
 3. Consulte el estado de las categorías.
 4. Seleccione una categoría disponible y pulse **Comenzar inventario**.
 5. Ingrese **Cerrado** para cada producto.
-6. Ingrese **Abierto** para cada producto. Use **punto para decimales y coma para miles**: `5.145` significa cinco con 145 milésimas; `5,145` significa cinco mil ciento cuarenta y cinco. También puede escribir los miles sin separador: `5145`. Se permiten ceros y decimales; no cantidades negativas. La unidad o presentación aparece junto al producto.
+6. Ingrese **Abierto** con punto o coma decimal, sin separadores de miles: `1.114` y `1,114` significan uno con 114 milésimas. Esta es la excepción a la regla de miles de los demás campos. **Abierto** y **Total convertido** se muestran con punto decimal, sin agrupar miles ni recortar sus decimales: `6 × 1 + 1.114 = 7.114`. Se permiten ceros; no cantidades negativas.
 7. Pulse **Guardar** si necesita hacer una pausa. Conserva el avance en este navegador, vuelve al menú y deja la categoría **En proceso**, aunque todos los campos estén completos.
 8. Para continuar, seleccione el mismo PDV, fecha y categoría: se recuperarán sus cantidades.
 9. Cuando termine, revise los valores, pulse **Finalizar** y confirme. Espere el mensaje de éxito: registra definitivamente la categoría y elimina su borrador local.

@@ -222,7 +222,7 @@
             .getElementById('buscadorConteo')
             .value = '';
 
-          actualizarResumenConteo(conteoConsolidado);
+          actualizarResumenConteo(conteoConsolidado, resultado.resumen);
           renderizarConteoConsolidado(
             conteoConsolidado
           );
@@ -302,12 +302,12 @@
         );
         agregarCeldaConteo(
           fila,
-          formatearNumeroConteo(registro.abierto),
+          formatearNumeroConteo(registro.abierto, true),
           'numero'
         );
         agregarCeldaConteo(
           fila,
-          formatearNumeroConteo(registro.total),
+          formatearNumeroConteo(registro.total, true),
           'numero'
         );
       });
@@ -322,18 +322,14 @@
       }
     }
 
-    function actualizarResumenConteo(registros) {
+    function actualizarResumenConteo(registros, resumenDecimal) {
       const totales = registros.reduce(
         function (acumulado, registro) {
           acumulado.cerrado +=
             Number(registro.cerrado) || 0;
-          acumulado.abierto +=
-            Number(registro.abierto) || 0;
-          acumulado.total +=
-            Number(registro.total) || 0;
           return acumulado;
         },
-        { cerrado: 0, abierto: 0, total: 0 }
+        { cerrado: 0 }
       );
 
       document.getElementById(
@@ -348,12 +344,12 @@
       document.getElementById(
         'resumenAbierto'
       ).textContent =
-        formatearNumeroConteo(totales.abierto);
+        formatearNumeroConteo(resumenDecimal.abierto, true);
 
       document.getElementById(
         'resumenTotal'
       ).textContent =
-        formatearNumeroConteo(totales.total);
+        formatearNumeroConteo(resumenDecimal.total, true);
     }
 
     function volverAdministracion() {
@@ -376,10 +372,12 @@
         .trim();
     }
 
-    function formatearNumeroConteo(valor) {
+    function formatearNumeroConteo(valor, decimal = false) {
       return new Intl.NumberFormat(
         'en-US',
-        { maximumFractionDigits: 6 }
+        decimal
+          ? { maximumSignificantDigits: 21, useGrouping: false }
+          : { maximumFractionDigits: 6 }
       ).format(Number(valor) || 0);
     }
 
@@ -391,11 +389,13 @@
         : fecha;
     }
 
-    function cantidadValida(valor) {
+    function cantidadValida(valor, campo) {
       if (typeof valor !== 'string' && typeof valor !== 'number') {
         return false;
       }
-      const texto = String(valor).trim();
+      const texto = campo === 'abierto'
+        ? String(valor).trim().replace(/,/g, '.')
+        : String(valor).trim();
       const formato = /^[+-]?(?:(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
       const numero = Number(texto.replace(/,/g, ''));
       return formato.test(texto) && Number.isFinite(numero) && numero >= 0;
@@ -405,11 +405,13 @@
       for (let indice = 0; indice < productos.length; indice++) {
         const producto = productos[indice];
         for (const campo of ['cerrado', 'abierto']) {
-          if (producto[campo] !== '' && !cantidadValida(producto[campo])) {
+          if (producto[campo] !== '' && !cantidadValida(producto[campo], campo)) {
             mostrarMensaje(
               'mensajeInventario',
               'Revise ' + campo + ' del ítem ' + producto.item +
-                '. Use punto para decimales y coma para miles (ejemplo: 1,234.5), sin cantidades negativas.',
+                (campo === 'abierto'
+                  ? '. Use punto o coma como separador decimal (ejemplo: 1.114 o 1,114), sin separadores de miles ni cantidades negativas.'
+                  : '. Use punto para decimales y coma para miles (ejemplo: 1,234.5), sin cantidades negativas.'),
               'error'
             );
             const entrada = document.getElementById(campo + '-' + indice);
@@ -1059,7 +1061,7 @@
         productos.filter(function (producto) {
           return (
             cantidadValida(producto.cerrado) &&
-            cantidadValida(producto.abierto)
+            cantidadValida(producto.abierto, 'abierto')
           );
         }).length;
 

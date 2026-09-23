@@ -75,7 +75,7 @@ def test_small_empty_counts_grid_expands_before_header_format(container):
 
 
 @pytest.mark.parametrize("value", ["", " ", None, -1, "-0.01", "NaN", "Infinity", float("inf"), True, [], {}, "1,2,3", "abc",
-                                   "2,5", "1.234,56", "1 234.56", "12,34", "1,23,456", "1234,567"])
+                                   "1.234,56", "1 234.56", "1,23,456"])
 @pytest.mark.parametrize("field", ["cerrado", "abierto"])
 def test_invalid_quantities(value, field, container):
     data = payload()

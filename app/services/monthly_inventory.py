@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime
+from decimal import Decimal
 import math
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -11,6 +12,15 @@ from app.repositories.monthly_bases import products_from_book
 def is_duplicate(rows, data):
     return any(date_key(r[2]) == date_key(data["fecha"]) and normalize(r[3]) == normalize(data["puntoVenta"])
                and normalize(r[4]) == normalize(data["categoria"]) for r in rows)
+
+
+def parse_opened(value):
+    """Abierto accepts one decimal separator, never thousands grouping."""
+    if isinstance(value, str) and "," in value:
+        if "." in value or value.count(",") != 1:
+            return Decimal("NaN")
+        value = value.replace(",", ".")
+    return parse_decimal(value)
 
 
 def validate_payload(data):
@@ -29,10 +39,12 @@ def validate_payload(data):
             value = row[key]
             if isinstance(value, bool) or not isinstance(value, (str, int, float)):
                 raise DomainError(f"La cantidad {label} del ítem {row['item']} no es válida.")
-            number = parse_number(value)
+            number = float(parse_opened(value)) if key == "abierto" else parse_number(value)
             if not math.isfinite(number) or number < 0:
-                raise DomainError(f"La cantidad {label} del ítem {row['item']} no es válida. Use punto para decimales y coma para miles (ejemplo: 1,234.5), sin cantidades negativas.")
-        total = sum(parse_number(row[k]) for k in ("cerrado", "abierto"))
+                rule = ("Use punto o coma como separador decimal (ejemplo: 1.114 o 1,114), sin separadores de miles."
+                        if key == "abierto" else "Use punto para decimales y coma para miles (ejemplo: 1,234.5), sin cantidades negativas.")
+                raise DomainError(f"La cantidad {label} del ítem {row['item']} no es válida. {rule}")
+        total = parse_number(row["cerrado"]) + float(parse_opened(row["abierto"]))
         if not math.isfinite(total):
             raise DomainError(f"La cantidad total del ítem {row['item']} no es válida.")
 
@@ -88,7 +100,7 @@ class MonthlyInventoryService:
             record_id, timestamp = str(uuid4()), self.now()
             rows = []
             for row in data["conteos"]:
-                closed, opened = [parse_decimal(row[k]) for k in ("cerrado", "abierto")]
+                closed, opened = parse_decimal(row["cerrado"]), parse_opened(row["abierto"])
                 rows.append([record_id, timestamp, data["fecha"], data["puntoVenta"], data["categoria"],
                              row["item"], row["producto"], row["udm"], float(closed), float(opened), float(closed + opened)])
             self.inventory.append(spreadsheet_id, book, rows)

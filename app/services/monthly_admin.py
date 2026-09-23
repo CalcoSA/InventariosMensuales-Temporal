@@ -80,20 +80,24 @@ def consolidate(rows):
         item = item_siesa(row[5])
         key = item + "|" + normalize(row[6]) + "|" + normalize(row[7])
         if key not in grouped:
-            grouped[key] = dict(item=item, producto=clean(row[6]), udm=clean(row[7]), categorias=[], cerrado=0, abierto=0, total=0)
+            grouped[key] = dict(item=item, producto=clean(row[6]), udm=clean(row[7]), categorias=[], cerrado=0, abierto=Decimal(0), total=Decimal(0))
         record = grouped[key]
         category = clean(row[4])
         if category and category not in record["categorias"]:
             record["categorias"].append(category)
         for col, field in ((8, "cerrado"), (9, "abierto"), (10, "total")):
-            number = parse_number(row[col])
-            record[field] += number if math.isfinite(number) else 0
+            if field == "cerrado":
+                number = parse_number(row[col])
+                record[field] += number if math.isfinite(number) else 0
+            else:
+                number = parse_decimal(row[col])
+                record[field] += number if number.is_finite() else Decimal(0)
     records = []
     for record in grouped.values():
         result = {k: v for k, v in record.items() if k != "categorias"}
         result["categoria"] = ", ".join(record["categorias"])
         for field in ("cerrado", "abierto", "total"):
-            result[field] = rounded_count(record[field])
+            result[field] = rounded_count(record[field]) if field == "cerrado" else float(record[field])
         records.append(result)
     return sorted(records, key=lambda r: spanish_key(r["item"], numeric=True))
 
@@ -123,7 +127,11 @@ class MonthlyAdminService:
 
     def consolidated(self, data):
         date, pdv = self._filters(data)
-        return dict(puntoVenta=pdv, fecha=date, registros=consolidate(self._converted_rows(date, pdv)))
+        records = consolidate(self._converted_rows(date, pdv))
+        # Sum decimal columns here so the browser need not add binary floats.
+        summary = {field: float(sum((parse_decimal(row[field]) for row in records), Decimal(0)))
+                   for field in ("abierto", "total")}
+        return dict(puntoVenta=pdv, fecha=date, registros=records, resumen=summary)
 
     def flat(self, data):
         date, pdv = self._filters(data)

@@ -239,7 +239,7 @@ def test_admin_status_error_keeps_button_hidden(ui):
     expect(page.locator("#botonAdministracion")).to_be_hidden()
 
 
-def test_decimal_point_and_thousands_comma_in_spanish_browser(ui):
+def test_opened_decimal_point_and_comma_survive_draft_in_spanish_browser(ui):
     page,c,context,calls=ui
     seed_factors(c)
     c.cache.clear()
@@ -258,7 +258,7 @@ def test_decimal_point_and_thousands_comma_in_spanish_browser(ui):
     assert page.input_value("#abierto-1") == "5,145"
     page.click("#botonFinalizar")
     expect(page.locator("#pantallaExito")).to_be_visible()
-    assert [r[8:11] for r in c.sheets.books["pdv-0"][1]["values"][1:]] == [[1, 5.145, 6.145], [1, 5145, 5146]]
+    assert [r[8:11] for r in c.sheets.books["pdv-0"][1]["values"][1:]] == [[1, 5.145, 6.145], [1, 5.145, 6.145]]
     page.click("#botonAdministracion")
     page.fill("#adminFecha", "2026-09-18")
     page.select_option("#adminPuntoVenta", "BR00 - PDV 0")
@@ -268,17 +268,17 @@ def test_decimal_point_and_thousands_comma_in_spanish_browser(ui):
         page.click("#botonDescargarPlano")
     detail = Path(download.value.path()).read_bytes().decode("ascii").split("\r\n")[1:-1]
     assert all(len(line) == 333 and "," not in line for line in detail)
-    assert [line[148:180] for line in detail] == ["000000000000006.145000000000000.", "000000000005146.000000000000000."]
+    assert [line[148:180] for line in detail] == ["000000000000006.145000000000000."] * 2
     page.click("#botonVerConteo")
     expect(page.locator("#pantallaConsolidado")).to_be_visible()
     rows = page.locator("#cuerpoConteoConsolidado tr")
     expect(rows.nth(0).locator("td").last).to_have_text("6.145")
-    expect(rows.nth(1).locator("td").last).to_have_text("5,146")
-    expect(page.locator("#resumenAbierto")).to_have_text("5,150.145")
-    expect(page.locator("#resumenTotal")).to_have_text("5,152.145")
+    expect(rows.nth(1).locator("td").last).to_have_text("6.145")
+    expect(page.locator("#resumenAbierto")).to_have_text("10.29")
+    expect(page.locator("#resumenTotal")).to_have_text("12.29")
 
 
-@pytest.mark.parametrize("value", ["2,5", "1.234,56", "12,34", "1 234", "-1"])
+@pytest.mark.parametrize("value", ["1,234.5", "1.234,56", "1,234,567", "1 234", "-1"])
 def test_invalid_number_format_never_saves_or_finalizes(ui, value):
     page,c,context,calls=ui
     select_category(page)
@@ -287,7 +287,38 @@ def test_invalid_number_format_never_saves_or_finalizes(ui, value):
     expect(page.locator("#textoProgreso")).to_have_text("1 de 2 (50%)")
     for button in ("#botonGuardarProceso", "#botonFinalizar"):
         page.click(button)
-        expect(page.locator("#mensajeInventario")).to_contain_text("Use punto para decimales y coma para miles")
+        expect(page.locator("#mensajeInventario")).to_contain_text("Use punto o coma como separador decimal")
         expect(page.locator("#pantallaInventario")).to_be_visible()
         assert page.input_value("#abierto-0") == value
     assert c.sheets.writes == 0 and "/api/guardarInventario" not in calls
+
+
+@pytest.mark.parametrize("closed,factor,opened,total", [
+    (6, 1, "1.114", "7.114"), (5, 1, "5.335", "10.335"),
+    (0, 24, "1.114", "1.114"), (2, 24, "1.114", "49.114"),
+    (0, 1, "1.11456789", "1.11456789"), (6, 1, "1", "7"),
+])
+@pytest.mark.parametrize("separator", [".", ","])
+def test_opened_and_converted_total_keep_decimals_in_administration(ui, closed, factor, opened, total, separator):
+    page,c,context,calls=ui
+    seed_factors(c, [[123, "P", "", factor], [2345, "Q", "", 1]])
+    c.cache.clear()
+    select_category(page)
+    page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
+    page.fill("#cerrado-0", str(closed))
+    page.fill("#abierto-0", opened.replace(".", separator))
+    expect(page.locator("#textoProgreso")).to_have_text("2 de 2 (100%)")
+    page.click("#botonFinalizar")
+    expect(page.locator("#pantallaExito")).to_be_visible()
+    assert c.sheets.books["pdv-0"][1]["values"][1][9] == float(opened)
+    page.click("#botonAdministracion")
+    page.fill("#adminFecha", "2026-09-18")
+    page.select_option("#adminPuntoVenta", "BR00 - PDV 0")
+    page.click("#botonVerConteo")
+    expect(page.locator("#pantallaConsolidado")).to_be_visible()
+    cells = page.locator("#cuerpoConteoConsolidado tr").first.locator("td")
+    expect(cells.nth(4)).to_have_text(str(closed))
+    expect(cells.nth(5)).to_have_text(opened)
+    expect(cells.nth(6)).to_have_text(total)
+    expect(page.locator("#resumenAbierto")).to_have_text(opened)
+    expect(page.locator("#resumenTotal")).to_have_text(total)
