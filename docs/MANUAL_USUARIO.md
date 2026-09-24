@@ -16,7 +16,7 @@ Inicie sesión en la intranet y abra **Inventarios Mensuales**. La sesión vence
 8. Para continuar, seleccione el mismo PDV, fecha y categoría: se recuperarán sus cantidades.
 9. Cuando termine, revise los valores, pulse **Finalizar** y confirme. Espere el mensaje de éxito: registra definitivamente la categoría y elimina su borrador local.
 
-Puede buscar por código, producto o unidad. El indicador de progreso cuenta los productos con ambos campos válidos. **Completar vacíos con 0** llena únicamente campos vacíos, previa confirmación: revise que esos ceros correspondan al conteo real. Las comas deben separar grupos de tres dígitos: corrija `2,5` a `2.5` si quiso ingresar dos y medio.
+Puede buscar por código, producto o unidad. El indicador de progreso cuenta los productos con ambos campos válidos. **Completar vacíos con 0** llena únicamente campos vacíos, previa confirmación: revise que esos ceros correspondan al conteo real. En **Cerrado**, las comas deben separar grupos de tres dígitos: corrija `2,5` a `2.5` si quiso ingresar dos y medio.
 
 ## Entender los estados
 
@@ -42,7 +42,9 @@ Solo los usuarios autorizados ven **Administración**. Seleccione la fecha y el 
 - **Descargar CSV:** descarga los registros guardados de la selección. Puede incluir varias filas del mismo producto cuando corresponden a categorías diferentes.
 - **Descargar plano Siesa:** ingrese una bodega de cuatro letras o números y un consecutivo de uno a ocho dígitos. Descarga el archivo para importarlo posteriormente en Siesa.
 
-La consulta y el CSV muestran **punto decimal y coma de miles**, por ejemplo `5,145.25`. El TXT de Siesa usa **punto decimal sin separador de miles**, con ceros y espacios de relleno para conservar las posiciones de sus campos. La presentación no cambia las cantidades numéricas ya guardadas.
+En la consulta, **Abierto** y **Total convertido** muestran punto decimal sin separadores de miles: `1.114` y `7.114`. Los enteros permanecen enteros: `1 × 3100 + 1600 = 4700`. **Cerrado** y el CSV muestran punto decimal y coma de miles, por ejemplo `5,145.25`. El TXT de Siesa usa **punto decimal sin separador de miles**, con ceros y espacios de relleno para conservar las posiciones de sus campos. La presentación no cambia las cantidades numéricas ya guardadas.
+
+Los datos nuevos conservan el decimal desde la captura y el borrador hasta el guardado. La consulta también conserva los decimales de valores existentes, incluidos textos como `1.114` o `1,114`. Si un histórico ya contiene `1114`, no es posible deducir si originalmente significaba `1114` o `1.114`: permanece `1114`, sin dividir por 1000 ni modificar Google Sheets. Esta corrección de lectura en la consulta no cambia el plano Siesa ni el CSV.
 
 El plano Siesa y el total de **Ver conteo del PDV** aplican esta conversión:
 

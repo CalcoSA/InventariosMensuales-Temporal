@@ -297,6 +297,7 @@ def test_invalid_number_format_never_saves_or_finalizes(ui, value):
     (6, 1, "1.114", "7.114"), (5, 1, "5.335", "10.335"),
     (0, 24, "1.114", "1.114"), (2, 24, "1.114", "49.114"),
     (0, 1, "1.11456789", "1.11456789"), (6, 1, "1", "7"),
+    (1, 3100, "1600", "4700"),
 ])
 @pytest.mark.parametrize("separator", [".", ","])
 def test_opened_and_converted_total_keep_decimals_in_administration(ui, closed, factor, opened, total, separator):
@@ -306,11 +307,33 @@ def test_opened_and_converted_total_keep_decimals_in_administration(ui, closed, 
     select_category(page)
     page.get_by_role("button",name="Completar vacíos con 0",exact=True).click()
     page.fill("#cerrado-0", str(closed))
-    page.fill("#abierto-0", opened.replace(".", separator))
+    entered = opened.replace(".", separator)
+    page.fill("#abierto-0", entered)
+    assert page.evaluate("cantidadValida(productos[0].abierto, 'abierto')")
     expect(page.locator("#textoProgreso")).to_have_text("2 de 2 (100%)")
-    page.click("#botonFinalizar")
+    page.click("#botonGuardarProceso")
+    expect(page.locator("#listaEstadosCategorias")).to_contain_text("En proceso")
+    assert page.evaluate("JSON.parse(localStorage.getItem(obtenerClaveBorradorPara("
+                         "'BR00 - PDV 0', '2026-09-18', 'Bebidas')))[0].abierto") == entered
+    assert c.sheets.writes == 0 and "/api/guardarInventario" not in calls
+    page.reload()
+    select_category(page)
+    assert page.input_value("#cerrado-0") == str(closed)
+    assert page.input_value("#abierto-0") == entered
+    assert page.evaluate("productos[0].abierto") == entered
+    with page.expect_request("**/api/guardarInventario") as request:
+        page.click("#botonFinalizar")
+    assert request.value.method == "POST"
+    sent = request.value.post_data_json["args"][0]["conteos"][0]
+    assert sent["cerrado"] == str(closed) and sent["abierto"] == entered
     expect(page.locator("#pantallaExito")).to_be_visible()
+    written = next(request["updateCells"]["rows"][1]["values"]
+                   for batch in c.sheets.history for request in batch if "updateCells" in request)
+    assert written[8]["userEnteredValue"] == {"numberValue": closed}
+    assert written[9]["userEnteredValue"] == {"numberValue": float(opened)}
     assert c.sheets.books["pdv-0"][1]["values"][1][9] == float(opened)
+    if opened in ("1.114", "5.335"):
+        assert written[9]["userEnteredValue"]["numberValue"] != int(opened.replace(".", ""))
     page.click("#botonAdministracion")
     page.fill("#adminFecha", "2026-09-18")
     page.select_option("#adminPuntoVenta", "BR00 - PDV 0")

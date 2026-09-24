@@ -4,6 +4,7 @@ import re
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from app.models.errors import DomainError
 from app.models.text import clean, date_key, valid_date, normalize, safe_filename, parse_number, parse_decimal, rounded_count, spanish_key
+from app.services.monthly_inventory import parse_opened
 
 
 def item_siesa(value):
@@ -127,7 +128,7 @@ class MonthlyAdminService:
 
     def consolidated(self, data):
         date, pdv = self._filters(data)
-        records = consolidate(self._converted_rows(date, pdv))
+        records = consolidate(self._converted_rows(date, pdv, decimal_opened=True))
         # Sum decimal columns here so the browser need not add binary floats.
         summary = {field: float(sum((parse_decimal(row[field]) for row in records), Decimal(0)))
                    for field in ("abierto", "total")}
@@ -142,7 +143,7 @@ class MonthlyAdminService:
             raise DomainError("El consecutivo debe contener solamente números y tener máximo 8 dígitos.")
         return flat_file(self._converted_rows(date, pdv), pdv, warehouse, sequence.zfill(8))
 
-    def _converted_rows(self, date, pdv):
+    def _converted_rows(self, date, pdv, *, decimal_opened=False):
         rows = self._rows(date, pdv)
         factors, issues = self.factors.read()
         problems, converted = {}, []
@@ -154,10 +155,15 @@ class MonthlyAdminService:
             if problem:
                 problems[clean(row[5])] = problem
                 continue
-            closed, opened = parse_decimal(row[8]), parse_decimal(row[9])
+            closed = parse_decimal(row[8])
+            # The consolidated view follows capture's decimal rule for Abierto.
+            # Keep the validated Siesa parsing unchanged by default.
+            opened = parse_opened(row[9]) if decimal_opened else parse_decimal(row[9])
             if any(not value.is_finite() or value < 0 for value in (closed, opened)):
                 raise DomainError(f"El ítem {clean(row[5])} tiene Cerrado o Abierto inválido.")
             output = list(row)
+            if decimal_opened:
+                output[9] = opened
             with localcontext() as context:
                 context.prec = 50
                 output[10] = closed * factors[item] + opened
